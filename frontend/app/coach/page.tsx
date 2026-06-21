@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Send, Bot, User, Sparkles, Trash2, Plus, 
-  Calendar, MessageSquare, AlertCircle, Leaf 
+  Calendar, MessageSquare, AlertCircle, Leaf,
+  Menu, X
 } from "lucide-react";
 import { getBackendUrl, getAuthHeaders } from "@/services/api";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
@@ -17,6 +18,7 @@ export default function CoachChat() {
   const [streaming, setStreaming] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const backendUrl = getBackendUrl("/coach");
@@ -284,40 +286,69 @@ export default function CoachChat() {
 
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 md:px-6 py-6">
+    <div className="space-y-6 max-w-7xl mx-auto px-4 md:px-6 py-6 flex flex-col h-full">
       
       {/* Title Header */}
-      <div className="border-b border-slate-800/85 pb-4">
+      <div className="border-b border-slate-800/85 pb-4 shrink-0">
         <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider bg-emerald-950/30 px-3 py-1 rounded-full w-fit">
           <Leaf className="w-3.5 h-3.5" />
           EcoPilot Assistant
         </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight mt-2">AI Sustainability Assistant</h1>
-        <p className="text-slate-400 text-sm mt-1">Get streaming sustainability advice, footprint breakdowns, and recommendations backed by Gemini.</p>
+        <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight mt-2">AI Sustainability Assistant</h1>
+        <p className="text-slate-400 text-xs md:text-sm mt-1">Get streaming sustainability advice, footprint breakdowns, and recommendations backed by Gemini.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[calc(100vh-280px)] min-h-[500px]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[calc(100vh-240px)] lg:h-[calc(100vh-280px)] min-h-[450px] lg:min-h-[500px] relative">
         
-        {/* Sidebar: Chat History Thread manager (4 Columns) */}
-        <div className="lg:col-span-4 h-full flex flex-col justify-between glass-panel rounded-2xl p-4 overflow-hidden border-slate-800/80">
+        {/* Sidebar: Chat History Thread manager (Drawer overlay on mobile, 4 columns on desktop) */}
+        <AnimatePresence>
+          {sidebarOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSidebarOpen(false)}
+              className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-40 lg:hidden"
+            />
+          )}
+        </AnimatePresence>
+
+        <div 
+          className={`
+            fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:z-0 lg:w-auto lg:max-w-none lg:inset-auto lg:transform-none lg:transition-none
+            ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+            lg:col-span-4 h-full flex flex-col justify-between glass-panel rounded-r-2xl lg:rounded-2xl p-4 overflow-hidden border-r border-slate-800/80 lg:border-slate-800/80 bg-slate-950 lg:bg-transparent
+          `}
+        >
           <div className="space-y-4 flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between border-b border-slate-850 pb-3">
               <span className="font-extrabold text-white text-xs uppercase tracking-wider flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-emerald-400" />
                 Conversations
               </span>
-              <button 
-                onClick={() => createNewSession()}
-                disabled={creatingSession || streaming}
-                className="p-1.5 rounded-lg bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-400 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {creatingSession ? (
-                  <span className="w-3.5 h-3.5 border border-t-emerald-400 border-r-transparent rounded-full animate-spin" />
-                ) : (
-                  <Plus className="w-3.5 h-3.5" />
-                )}
-                New Thread
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button 
+                  onClick={async () => {
+                    await createNewSession();
+                    setSidebarOpen(false);
+                  }}
+                  disabled={creatingSession || streaming}
+                  className="p-1.5 rounded-lg bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-400 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creatingSession ? (
+                    <span className="w-3.5 h-3.5 border border-t-emerald-400 border-r-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5" />
+                  )}
+                  New
+                </button>
+                <button 
+                  onClick={() => setSidebarOpen(false)}
+                  className="lg:hidden p-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* List */}
@@ -325,7 +356,12 @@ export default function CoachChat() {
               {sessions.map(s => (
                 <div 
                   key={s._id}
-                  onClick={() => { if (!streaming && !loadingHistory) loadSession(s._id); }}
+                  onClick={() => { 
+                    if (!streaming && !loadingHistory) {
+                      loadSession(s._id); 
+                      setSidebarOpen(false);
+                    }
+                  }}
                   className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
                     activeSession?._id === s._id 
                       ? "border-emerald-500/35 bg-emerald-950/15" 
@@ -370,9 +406,17 @@ export default function CoachChat() {
         <div className="lg:col-span-8 h-full flex flex-col justify-between glass-panel rounded-2xl overflow-hidden border-slate-800/80">
           
           {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-850 bg-slate-950/30 flex items-center justify-between">
+          <div className="px-4 md:px-6 py-4 border-b border-slate-850 bg-slate-950/30 flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/15 flex items-center justify-center text-emerald-450">
+              {/* Menu Toggle Button for mobile */}
+              <button 
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-850 transition-colors cursor-pointer mr-1 shrink-0"
+              >
+                <Menu className="w-4.5 h-4.5" />
+              </button>
+
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/15 flex items-center justify-center text-emerald-450 shrink-0">
                 <Bot className="w-5 h-5" />
               </div>
               <div className="min-w-0">
@@ -387,7 +431,7 @@ export default function CoachChat() {
           </div>
 
           {/* Messages Feed */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-950/5">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 bg-slate-950/5">
             {loadingHistory ? (
               <div className="h-full flex items-center justify-center flex-col space-y-3">
                 <div className="w-7 h-7 border-2 border-t-emerald-500 border-r-transparent border-slate-800 rounded-full animate-spin" />
@@ -402,17 +446,17 @@ export default function CoachChat() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       key={index}
-                      className={`flex items-start gap-3.5 max-w-[85%] ${isUser ? "ml-auto flex-row-reverse" : "mr-auto"}`}
+                      className={`flex items-start gap-2.5 md:gap-3.5 max-w-[90%] md:max-w-[85%] ${isUser ? "ml-auto flex-row-reverse" : "mr-auto"}`}
                     >
-                      <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center shrink-0 border ${
+                      <div className={`w-8 h-8 md:w-8.5 md:h-8.5 rounded-full flex items-center justify-center shrink-0 border ${
                         isUser 
                           ? "bg-blue-600/10 border-blue-500/15 text-blue-400" 
                           : "bg-emerald-600/10 border-emerald-500/15 text-emerald-405"
                       }`}>
-                        {isUser ? <User className="w-4.5 h-4.5" /> : <Bot className="w-4.5 h-4.5" />}
+                        {isUser ? <User className="w-4 h-4 md:w-4.5 md:h-4.5" /> : <Bot className="w-4 h-4 md:w-4.5 md:h-4.5" />}
                       </div>
                       
-                      <div className={`p-4 rounded-2xl border text-xs shadow-md ${
+                      <div className={`p-3 md:p-4 rounded-2xl border text-xs shadow-md ${
                         isUser 
                           ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white border-blue-600 rounded-tr-none" 
                           : "glass-panel text-slate-200 border-slate-800/70 rounded-tl-none bg-slate-950/20"
@@ -431,11 +475,11 @@ export default function CoachChat() {
 
                 {/* Bouncing Dots Stream Typing Loader */}
                 {streaming && messages[messages.length - 1]?.content === "" && (
-                  <div className="flex items-start gap-3.5 mr-auto">
-                    <div className="w-8.5 h-8.5 rounded-full bg-emerald-600/10 border border-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
-                      <Bot className="w-4.5 h-4.5" />
+                  <div className="flex items-start gap-2.5 md:gap-3.5 mr-auto">
+                    <div className="w-8 h-8 md:w-8.5 md:h-8.5 rounded-full bg-emerald-600/10 border border-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                      <Bot className="w-4 h-4 md:w-4.5 md:h-4.5" />
                     </div>
-                    <div className="p-4 rounded-2xl glass-panel text-slate-400 border-slate-850 rounded-tl-none bg-slate-950/20 flex items-center gap-1.5">
+                    <div className="p-3 md:p-4 rounded-2xl glass-panel text-slate-400 border-slate-850 rounded-tl-none bg-slate-950/20 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -448,7 +492,7 @@ export default function CoachChat() {
           </div>
 
           {/* Bottom Form input */}
-          <div className="p-4 border-t border-slate-850 bg-slate-950/30">
+          <div className="p-3 md:p-4 border-t border-slate-850 bg-slate-950/30">
             <form onSubmit={handleSendMessage} className="flex gap-2">
               <input 
                 type="text"
@@ -456,12 +500,12 @@ export default function CoachChat() {
                 value={inputValue}
                 onChange={e => setInputValue(e.target.value)}
                 disabled={streaming || creatingSession}
-                className="flex-1 bg-slate-950 border border-slate-850 rounded-xl px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-45"
+                className="flex-1 bg-slate-950 border border-slate-850 rounded-xl px-3 py-2.5 md:px-4 md:py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-45"
               />
               <button 
                 type="submit"
                 disabled={streaming || creatingSession || !inputValue.trim()}
-                className="w-12 h-12 rounded-xl flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:opacity-40 disabled:shadow-none text-white shadow-lg shadow-emerald-600/20 transition-all cursor-pointer shrink-0"
+                className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:opacity-40 disabled:shadow-none text-white shadow-lg shadow-emerald-600/20 transition-all cursor-pointer shrink-0"
               >
                 <Send className="w-4.5 h-4.5" />
               </button>
