@@ -36,7 +36,8 @@ class AuthController:
 
         return TokenResponse(
             access_token=access_token,
-            refresh_token=refresh_token
+            refresh_token=refresh_token,
+            full_name=user_data.full_name
         )
 
     @staticmethod
@@ -59,7 +60,8 @@ class AuthController:
 
         return TokenResponse(
             access_token=access_token,
-            refresh_token=refresh_token
+            refresh_token=refresh_token,
+            full_name=user.get("full_name")
         )
 
     @staticmethod
@@ -100,7 +102,8 @@ class AuthController:
 
         return TokenResponse(
             access_token=new_access,
-            refresh_token=new_refresh
+            refresh_token=new_refresh,
+            full_name=user.get("full_name")
         )
 
     @staticmethod

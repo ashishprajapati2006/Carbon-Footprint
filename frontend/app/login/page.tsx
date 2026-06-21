@@ -51,7 +51,7 @@ export default function LoginPage() {
 
       // Store tokens and metadata
       localStorage.setItem("token", data.access_token);
-      localStorage.setItem("user", JSON.stringify({ email, full_name: fullName || "EcoPilot User" }));
+      localStorage.setItem("user", JSON.stringify({ email, full_name: data.full_name || fullName || "EcoPilot User" }));
 
       setSuccessMsg(isLogin ? "Welcome back! Redirecting..." : "Registration successful! Loading your dashboard...");
       
