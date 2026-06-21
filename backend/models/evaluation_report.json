@@ -1,0 +1,102 @@
+{
+  "selected_model": "XGBoostRegressor",
+  "metrics": {
+    "mae": 127.60456848144531,
+    "rmse": 170.96368058194406,
+    "r2": 0.9718877077102661
+  },
+  "all_models_metrics": {
+    "RandomForestRegressor": {
+      "mae": 217.33407416041922,
+      "rmse": 286.0792802210557,
+      "r2": 0.9212843139340658
+    },
+    "XGBoostRegressor": {
+      "mae": 127.60456848144531,
+      "rmse": 170.96368058194406,
+      "r2": 0.9718877077102661
+    }
+  },
+  "top_features": [
+    {
+      "Display Feature": "Vehicle Type: electric",
+      "Importance": 0.22022442519664764
+    },
+    {
+      "Display Feature": "Frequency of Traveling by Air: very frequently",
+      "Importance": 0.1790684461593628
+    },
+    {
+      "Display Feature": "Vehicle Monthly Distance Km",
+      "Importance": 0.11324656754732132
+    },
+    {
+      "Display Feature": "Frequency of Traveling by Air: frequently",
+      "Importance": 0.06647951900959015
+    },
+    {
+      "Display Feature": "Vehicle Type: hybrid",
+      "Importance": 0.05818863958120346
+    },
+    {
+      "Display Feature": "Transport: private",
+      "Importance": 0.0560472272336483
+    },
+    {
+      "Display Feature": "Vehicle Type: petrol",
+      "Importance": 0.032767683267593384
+    },
+    {
+      "Display Feature": "Body Type: obese",
+      "Importance": 0.020679891109466553
+    },
+    {
+      "Display Feature": "Frequency of Traveling by Air: never",
+      "Importance": 0.018926944583654404
+    },
+    {
+      "Display Feature": "Sex: female",
+      "Importance": 0.018874336034059525
+    },
+    {
+      "Display Feature": "Heating Energy Source: electricity",
+      "Importance": 0.018165720626711845
+    },
+    {
+      "Display Feature": "Body Type: overweight",
+      "Importance": 0.012957640923559666
+    },
+    {
+      "Display Feature": "Body Type: underweight",
+      "Importance": 0.012689780443906784
+    },
+    {
+      "Display Feature": "Body Type: normal",
+      "Importance": 0.012052755802869797
+    },
+    {
+      "Display Feature": "Waste Bag Size: medium",
+      "Importance": 0.011380410753190517
+    },
+    {
+      "Display Feature": "Heating Energy Source: coal",
+      "Importance": 0.010495132766664028
+    },
+    {
+      "Display Feature": "Waste Bag Size: extra large",
+      "Importance": 0.010449201799929142
+    },
+    {
+      "Display Feature": "How Many New Clothes Monthly",
+      "Importance": 0.010214334353804588
+    },
+    {
+      "Display Feature": "Waste Bag Size: small",
+      "Importance": 0.009742979891598225
+    },
+    {
+      "Display Feature": "Waste Bag Weekly Count",
+      "Importance": 0.009588680230081081
+    }
+  ]
+}
