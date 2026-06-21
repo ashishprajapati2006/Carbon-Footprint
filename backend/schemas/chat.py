@@ -1,13 +1,13 @@
-from datetime import datetime
-from typing import List
-from pydantic import BaseModel, Field
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field, ConfigDict
 from .base import PyObjectId
 
 
 class ChatMessageItem(BaseModel):
     role: str  # "user" or "assistant"
     content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ChatSessionCreate(BaseModel):
@@ -21,8 +21,25 @@ class ChatSessionResponse(BaseModel):
     messages: List[ChatMessageItem]
     updated_at: datetime
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+
+
+class ChatHistoryMessageResponse(BaseModel):
+    id: Optional[PyObjectId] = Field(None, alias="_id")
+    conversation_id: PyObjectId
+    session_id: PyObjectId
+    user_id: PyObjectId
+    timestamp: datetime
+    role: str
+    message: str
+    content: str
+    model: str
+    token_usage: Dict[str, int]
+    response_time: float
+    metadata: Dict[str, Any]
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )

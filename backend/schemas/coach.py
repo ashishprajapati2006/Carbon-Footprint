@@ -1,12 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class MessageItem(BaseModel):
     role: str  # "user" or "assistant"
     content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    message: Optional[str] = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ChatMessageRequest(BaseModel):
@@ -20,11 +21,9 @@ class ChatSessionResponse(BaseModel):
     messages: List[MessageItem]
     updated_at: datetime
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
 
 
 class ChatSessionList(BaseModel):
@@ -32,11 +31,9 @@ class ChatSessionList(BaseModel):
     session_title: str
     updated_at: datetime
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
 
 
 class SustainabilityAssessmentRequest(BaseModel):
@@ -62,3 +59,13 @@ class SustainabilityAssessmentResponse(BaseModel):
     expected_savings: str = Field(..., description="Overall expected savings description")
     co2_reduction: str = Field(..., description="Overall expected carbon reduction description")
     difficulty_level: str = Field(..., description="Overall difficulty of recommendations")
+
+
+class ChatSessionUpdateResponse(BaseModel):
+    message: str
+    session_id: str
+    session_title: str
+
+
+class GenericMessageResponse(BaseModel):
+    message: str

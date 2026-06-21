@@ -2,7 +2,7 @@ from bson import ObjectId
 from typing import List, Dict, Any, Optional
 
 class BillRepository:
-    def __init__(self, db):
+    def __init__(self, db: Any):
         self.db = db
 
     async def log_bill_analysis(self, scan_entry: Dict[str, Any]) -> str:

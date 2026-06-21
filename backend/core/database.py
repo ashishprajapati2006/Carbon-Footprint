@@ -37,6 +37,20 @@ class MockCollection:
                     elif op == "$in":
                         if doc_val not in op_val:
                             return False
+                    elif op == "$regex":
+                        import re
+                        options = v.get("$options", "")
+                        flags = 0
+                        if "i" in options.lower():
+                            flags = re.IGNORECASE
+                        try:
+                            pattern = re.compile(op_val, flags)
+                            if not pattern.search(str(doc_val or "")):
+                                return False
+                        except Exception:
+                            return False
+                    elif op == "$options":
+                        continue
                     else:
                         if doc_val != v:
                             return False
@@ -82,7 +96,12 @@ class MockCollection:
                     reverse = (direction == -1)
                     self.docs.sort(key=lambda x: (x.get(key) is not None, x.get(key)), reverse=reverse)
                 return self
-            def limit(self, *args, **kwargs):
+            def skip(self, count, *args, **kwargs):
+                self.docs = self.docs[count:]
+                return self
+            def limit(self, count, *args, **kwargs):
+                if count is not None:
+                    self.docs = self.docs[:count]
                 return self
             async def to_list(self, length=None):
                 import copy
@@ -112,6 +131,7 @@ class MockCollection:
                 target_doc = doc
                 break
 
+        modified = 0
         if target_doc:
             if "$set" in update:
                 target_doc.update(update["$set"])
@@ -120,8 +140,22 @@ class MockCollection:
                     if k not in target_doc or not isinstance(target_doc[k], list):
                         target_doc[k] = []
                     target_doc[k].append(v)
+            modified = 1
+        elif kwargs.get("upsert") or (len(args) > 0 and args[0] is True):
+            new_doc = {}
+            for k, v in filter.items():
+                if not isinstance(v, dict) and not k.startswith("$"):
+                    new_doc[k] = v
+            if "$set" in update:
+                new_doc.update(update["$set"])
+            from bson import ObjectId
+            if "_id" not in new_doc:
+                new_doc["_id"] = ObjectId()
+            self._store.append(new_doc)
+            modified = 1
+
         class UpdateResult:
-            modified_count = 1 if target_doc else 0
+            modified_count = modified
         return UpdateResult()
 
     async def delete_one(self, filter, *args, **kwargs):

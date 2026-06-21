@@ -1,16 +1,34 @@
 from datetime import datetime, timezone
+from typing import Any
 from fastapi import UploadFile, HTTPException, status
 from bson import ObjectId
 
+from core.config import settings
 from ocr.vision_svc import VisionAnalysisService
 from ai.gemini_ai import GeminiAIService
 from repositories.room import RoomRepository
 
 class RoomController:
     @staticmethod
-    async def scan_room_image(file: UploadFile, room_type: str, db, current_user: dict) -> dict:
+    async def scan_room_image(file: UploadFile, room_type: str, db: Any, current_user: dict) -> dict:
         repo = RoomRepository(db)
-        file_bytes = await file.read()
+        
+        from utils.file_validator import validate_uploaded_file, sanitize_filename
+        
+        allowed_exts = {"png", "jpg", "jpeg"}
+        allowed_mimes = {"image/png", "image/jpeg", "image/jpg"}
+        
+        try:
+            file_bytes = await validate_uploaded_file(
+                file=file,
+                allowed_extensions=allowed_exts,
+                allowed_mimes=allowed_mimes,
+                max_size=settings.max_upload_size
+            )
+        finally:
+            await file.close()
+            
+        filename = sanitize_filename(file.filename or "room.jpg")
         content_type = file.content_type or "image/jpeg"
 
         gemini = GeminiAIService()
@@ -21,7 +39,7 @@ class RoomController:
 
             scan_entry = {
                 "user_id": ObjectId(current_user["id"]),
-                "image_url": file.filename,
+                "image_url": filename,
                 "room_type": audit_data.get("room_type", room_type),
                 "detected_appliances": audit_data.get("detected_appliances", []),
                 "total_energy_waste_kwh": audit_data.get("total_energy_waste_kwh", 0.0),
@@ -48,7 +66,7 @@ class RoomController:
             )
 
     @staticmethod
-    async def list_room_scans(db, current_user: dict) -> list:
+    async def list_room_scans(db: Any, current_user: dict) -> list:
         repo = RoomRepository(db)
         scans = await repo.get_history(current_user["id"])
         

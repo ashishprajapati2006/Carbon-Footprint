@@ -17,11 +17,23 @@ from __future__ import annotations
 import json
 import logging
 import asyncio
+import hashlib
 from typing import AsyncGenerator
 
 from core.config import settings
+from services.cache_svc import InMemoryCache
 
 logger = logging.getLogger("ecopilot.gemini")
+
+# Chat response cache with TTL 5 minutes (300 seconds)
+chat_response_cache = InMemoryCache(default_ttl=300)
+
+def _get_chat_cache_key(chat_history: list, new_message: str) -> str:
+    # Trim history context to last 10 messages before caching to ensure unique key format
+    trimmed = chat_history[-10:]
+    history_serialized = json.dumps([{"role": m["role"], "content": m["content"]} for m in trimmed])
+    key_str = f"{history_serialized}||{new_message}"
+    return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
 
 # ── Model name – use the widely-available flash model ─────────────────────────
 _MODEL = "gemini-2.5-flash"
@@ -60,6 +72,28 @@ class GeminiAIService:
             logger.warning("Gemini API key is missing/dummy – operating in MOCK mode.")
 
     # ── Private helpers ────────────────────────────────────────────────────────
+
+    async def _execute_with_retry(self, func, *args, **kwargs):
+        """
+        Executes a synchronous API call with exponential backoff retry.
+        Up to 3 attempts, starting at 0.5s backoff.
+        """
+        attempts = 3
+        backoff = 0.5
+        for attempt in range(attempts):
+            try:
+                return func(*args, **kwargs)
+            except Exception as exc:
+                if _is_rate_limit(exc):
+                    raise exc
+                if attempt == attempts - 1:
+                    raise exc
+                logger.warning(
+                    f"Gemini API call failed on attempt {attempt + 1}: {exc}. "
+                    f"Retrying in {backoff}s..."
+                )
+                await asyncio.sleep(backoff)
+                backoff *= 2
 
     def _generate_mock_reply(self, message: str) -> str:
         """Returns a keyword-matched sustainability coaching reply."""
@@ -101,10 +135,53 @@ class GeminiAIService:
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
-    async def generate_chat_response(self, chat_history: list, new_message: str) -> str:
-        """Generates a single conversational response."""
+    async def generate_history_summary(self, chat_history: list) -> str:
+        """Summarizes older conversation history to conserve tokens while preserving context."""
+        if not chat_history:
+            return ""
         if self.is_mock:
-            return self._generate_mock_reply(new_message)
+            return "The user previously discussed general sustainability habits and carbon reduction."
+        
+        # Format the history to be summarized
+        formatted_history = "\n".join([f"{msg['role'].upper()}: {msg.get('content') or msg.get('message') or ''}" for msg in chat_history])
+        prompt = f"Summarize the following conversation history between a User and EcoPilot (sustainability coach) in a concise, dense paragraph of max 3 sentences. Focus on discussed habits, plans, and metrics:\n\n{formatted_history}"
+        
+        try:
+            from google.genai import types as gtypes  # type: ignore
+            config = gtypes.GenerateContentConfig(
+                system_instruction="You are a helper that summarizes chat transcripts highly concisely.",
+                temperature=0.2,
+                max_output_tokens=256
+            )
+            response = await self._execute_with_retry(
+                self._client.models.generate_content,
+                model=_MODEL,
+                contents=[gtypes.Content(role="user", parts=[gtypes.Part(text=prompt)])],
+                config=config,
+            )
+            return (response.text or "").strip()
+        except Exception as exc:
+            logger.error(f"Error generating history summary: {exc}")
+            return "The user and EcoPilot previously discussed sustainability habits."
+
+    async def generate_chat_response(
+        self, chat_history: list, new_message: str, history_summary: Optional[str] = None
+    ) -> str:
+        """Generates a single conversational response with caching and context window trimming."""
+        # Trim history context to last 10 messages
+        chat_history = chat_history[-10:]
+        
+        # Check cache
+        cache_key = _get_chat_cache_key(chat_history, new_message)
+        cached_reply = chat_response_cache.get(cache_key)
+        if cached_reply:
+            logger.info("Serving cached chat response.")
+            return cached_reply
+
+        if self.is_mock:
+            reply = self._generate_mock_reply(new_message)
+            chat_response_cache.set(cache_key, reply)
+            return reply
 
         try:
             from google.genai import types as gtypes  # type: ignore
@@ -115,6 +192,8 @@ class GeminiAIService:
                 "and provide concrete, actionable green lifestyle advice. "
                 "Keep responses friendly, empowering, and concise."
             )
+            if history_summary:
+                system_prompt += f"\n\nSummary of earlier conversation:\n{history_summary}"
 
             contents = []
             for msg in chat_history:
@@ -122,11 +201,20 @@ class GeminiAIService:
                 contents.append(gtypes.Content(role=role, parts=[gtypes.Part(text=msg["content"])]))
             contents.append(gtypes.Content(role="user", parts=[gtypes.Part(text=new_message)]))
 
-            config = gtypes.GenerateContentConfig(system_instruction=system_prompt)
-            response = self._client.models.generate_content(
-                model=_MODEL, contents=contents, config=config
+            config = gtypes.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.7,
+                max_output_tokens=1024
             )
-            return response.text or self._generate_mock_reply(new_message)
+            response = await self._execute_with_retry(
+                self._client.models.generate_content,
+                model=_MODEL,
+                contents=contents,
+                config=config,
+            )
+            reply = response.text or self._generate_mock_reply(new_message)
+            chat_response_cache.set(cache_key, reply)
+            return reply
 
         except Exception as exc:
             logger.error(f"Gemini chat error: {exc}")
@@ -136,11 +224,27 @@ class GeminiAIService:
             return self._generate_mock_reply(new_message)
 
     async def generate_chat_response_stream(
-        self, chat_history: list, new_message: str
+        self, chat_history: list, new_message: str, history_summary: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
-        """Streams conversational responses word-by-word."""
+        """Streams conversational responses with caching and context window trimming."""
+        # Trim history context to last 10 messages
+        chat_history = chat_history[-10:]
+        
+        # Check cache
+        cache_key = _get_chat_cache_key(chat_history, new_message)
+        cached_reply = chat_response_cache.get(cache_key)
+        if cached_reply:
+            logger.info("Serving cached streamed response.")
+            # Yield cached chunks with a brief delay
+            words = cached_reply.split(" ")
+            for i in range(0, len(words), 2):
+                yield " ".join(words[i : i + 2]) + " "
+                await asyncio.sleep(0.02)
+            return
+
         if self.is_mock:
             reply = self._generate_mock_reply(new_message)
+            chat_response_cache.set(cache_key, reply)
             words = reply.split(" ")
             for i in range(0, len(words), 2):
                 yield " ".join(words[i : i + 2]) + " "
@@ -156,6 +260,8 @@ class GeminiAIService:
                 "Keep responses friendly and concise. "
                 "Use markdown formatting for lists and key data."
             )
+            if history_summary:
+                system_prompt += f"\n\nSummary of earlier conversation:\n{history_summary}"
 
             contents = []
             for msg in chat_history:
@@ -163,12 +269,20 @@ class GeminiAIService:
                 contents.append(gtypes.Content(role=role, parts=[gtypes.Part(text=msg["content"])]))
             contents.append(gtypes.Content(role="user", parts=[gtypes.Part(text=new_message)]))
 
-            config = gtypes.GenerateContentConfig(system_instruction=system_prompt)
+            config = gtypes.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.7,
+                max_output_tokens=1024
+            )
+            accumulated = ""
             for chunk in self._client.models.generate_content_stream(
                 model=_MODEL, contents=contents, config=config
             ):
                 if chunk.text:
+                    accumulated += chunk.text
                     yield chunk.text
+            
+            chat_response_cache.set(cache_key, accumulated)
 
         except Exception as exc:
             logger.error(f"Gemini stream error: {exc}")
@@ -238,7 +352,11 @@ class GeminiAIService:
             image_part = gtypes.Part.from_bytes(data=image_bytes, mime_type=mime_type)
             text_part = gtypes.Part(text=prompt)
             contents = [gtypes.Content(role="user", parts=[image_part, text_part])]
-            response = self._client.models.generate_content(model=_MODEL, contents=contents)
+            response = await self._execute_with_retry(
+                self._client.models.generate_content,
+                model=_MODEL,
+                contents=contents,
+            )
             return response.text or "{}"
 
         except Exception as exc:
@@ -289,8 +407,11 @@ Respond ONLY with a JSON object matching this exact schema – no markdown, no e
                     "You are EcoPilot, a highly skilled AI sustainability coach. "
                     "Respond only with valid JSON – no markdown fences."
                 ),
+                temperature=0.2,
+                max_output_tokens=1024
             )
-            response = self._client.models.generate_content(
+            response = await self._execute_with_retry(
+                self._client.models.generate_content,
                 model=_MODEL,
                 contents=[gtypes.Content(role="user", parts=[gtypes.Part(text=prompt)])],
                 config=config,
@@ -380,8 +501,11 @@ Respond ONLY with valid JSON matching this schema – no markdown:
             config = gtypes.GenerateContentConfig(
                 response_mime_type="application/json",
                 system_instruction="You are EcoPilot. Respond only with valid JSON.",
+                temperature=0.2,
+                max_output_tokens=1024
             )
-            response = self._client.models.generate_content(
+            response = await self._execute_with_retry(
+                self._client.models.generate_content,
                 model=_MODEL,
                 contents=[gtypes.Content(role="user", parts=[gtypes.Part(text=prompt)])],
                 config=config,
@@ -453,9 +577,12 @@ Write a concise, encouraging executive summary (max 5 sentences, under 120 words
             from google.genai import types as gtypes  # type: ignore
 
             config = gtypes.GenerateContentConfig(
-                system_instruction="You are EcoPilot. Write clear, encouraging progress summaries."
+                system_instruction="You are EcoPilot. Write clear, encouraging progress summaries.",
+                temperature=0.7,
+                max_output_tokens=512
             )
-            response = self._client.models.generate_content(
+            response = await self._execute_with_retry(
+                self._client.models.generate_content,
                 model=_MODEL,
                 contents=[gtypes.Content(role="user", parts=[gtypes.Part(text=prompt)])],
                 config=config,

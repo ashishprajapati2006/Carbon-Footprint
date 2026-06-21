@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Leaf, Zap, Car, Trash2, CheckCircle, HelpCircle } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 
 export default function Calculator() {
   const [step, setStep] = useState(1);
@@ -40,11 +40,10 @@ export default function Calculator() {
     };
 
     try {
-      const res = await fetch(getBackendUrl("/footprint/log"), {
+      const res = await apiFetch(getBackendUrl("/footprint/log"), {
         method: "POST",
         headers: { 
-          "Content-Type": "application/json",
-          ...getAuthHeaders()
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(payload)
       });

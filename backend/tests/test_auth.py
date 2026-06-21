@@ -50,7 +50,7 @@ class TestAuthenticationSuite(unittest.TestCase):
         # Test Duplicate registration prevention
         response_dup = self.client.post("/api/auth/register", json={
             "email": self.test_email,
-            "password": "anotherPassword",
+            "password": "anotherPassword123",
             "full_name": "Another Name"
         })
         self.assertEqual(response_dup.status_code, 400)

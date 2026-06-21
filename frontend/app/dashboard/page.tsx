@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Leaf, Car, Zap, Trash2, Calendar, TrendingUp, CheckCircle, ArrowRight, Compass
 } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 
 // Mock Fallbacks
 const DEFAULT_LOGS = [
@@ -40,17 +40,13 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const logsRes = await fetch(`${backendUrl}/footprint/history`, {
-        headers: getAuthHeaders()
-      });
+      const logsRes = await apiFetch(`${backendUrl}/footprint/history`);
       if (logsRes.ok) {
         const logsData = await logsRes.json();
         if (logsData.length > 0) setLogs(logsData);
       }
       
-      const predRes = await fetch(`${backendUrl}/footprint/predict`, {
-        headers: getAuthHeaders()
-      });
+      const predRes = await apiFetch(`${backendUrl}/footprint/predict`);
       if (predRes.ok) {
         const predData = await predRes.json();
         if (predData.length > 0) setPredictions(predData);
@@ -80,11 +76,10 @@ export default function Dashboard() {
     };
 
     try {
-      const response = await fetch(`${backendUrl}/footprint/log`, {
+      const response = await apiFetch(`${backendUrl}/footprint/log`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders()
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(payload)
       });
@@ -98,9 +93,7 @@ export default function Dashboard() {
         setWaste("");
         
         // Refresh predictions
-        const predRes = await fetch(`${backendUrl}/footprint/predict`, {
-          headers: getAuthHeaders()
-        });
+        const predRes = await apiFetch(`${backendUrl}/footprint/predict`);
         if (predRes.ok) {
           const predData = await predRes.json();
           setPredictions(predData);
@@ -322,11 +315,12 @@ export default function Dashboard() {
           <form onSubmit={handleLogSubmit} className="space-y-4 text-xs">
             {/* Energy */}
             <div className="space-y-1">
-              <label className="text-muted font-semibold flex items-center gap-1.5">
+              <label htmlFor="kwh-input" className="text-muted font-semibold flex items-center gap-1.5">
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
                 Electricity Usage (kWh)
               </label>
               <input 
+                id="kwh-input"
                 type="number" 
                 placeholder="e.g. 15"
                 value={kwh}
@@ -338,11 +332,12 @@ export default function Dashboard() {
             {/* Transport */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-muted font-semibold flex items-center gap-1.5">
+                <label htmlFor="distance-input" className="text-muted font-semibold flex items-center gap-1.5">
                   <Car className="w-3.5 h-3.5 text-blue-500" />
                   Distance (km)
                 </label>
                 <input 
+                  id="distance-input"
                   type="number" 
                   placeholder="e.g. 35"
                   value={distance}
@@ -351,8 +346,9 @@ export default function Dashboard() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-muted font-semibold">Vehicle Type</label>
+                <label htmlFor="vehicle-select" className="text-muted font-semibold">Vehicle Type</label>
                 <select 
+                  id="vehicle-select"
                   value={vehicle}
                   onChange={e => setVehicle(e.target.value)}
                   className="w-full bg-slate-950/50 dark:bg-slate-950/50 border border-border rounded-lg py-2.5 px-3 text-foreground focus:outline-none focus:border-emerald-500 transition-colors"
@@ -369,8 +365,9 @@ export default function Dashboard() {
 
             {/* Diet */}
             <div className="space-y-1">
-              <label className="text-muted font-semibold">Diet Log</label>
+              <label htmlFor="diet-select" className="text-muted font-semibold">Diet Log</label>
               <select 
+                id="diet-select"
                 value={diet}
                 onChange={e => setDiet(e.target.value)}
                 className="w-full bg-slate-950/50 dark:bg-slate-950/50 border border-border rounded-lg py-2.5 px-3 text-foreground focus:outline-none focus:border-emerald-500 transition-colors"
@@ -384,12 +381,13 @@ export default function Dashboard() {
 
             {/* Waste */}
             <div className="space-y-1">
-              <label className="text-muted font-semibold flex items-center gap-1.5">
+              <label htmlFor="waste-input" className="text-muted font-semibold flex items-center gap-1.5">
                 <Trash2 className="w-3.5 h-3.5 text-slate-550" />
                 Waste Weight (kg)
               </label>
               <div className="flex gap-2">
                 <input 
+                  id="waste-input"
                   type="number" 
                   placeholder="e.g. 5"
                   value={waste}
@@ -399,6 +397,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={() => setRecycled(!recycled)}
+                  aria-pressed={recycled}
                   className={`px-3 border rounded-lg transition-colors font-bold ${recycled ? "bg-emerald-950/30 text-primary border-emerald-500" : "bg-slate-955 border-border text-slate-500"}`}
                 >
                   Recycled

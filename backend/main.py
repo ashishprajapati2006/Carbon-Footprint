@@ -6,7 +6,9 @@ from fastapi.responses import JSONResponse
 
 from core.config import settings
 from core.database import get_db, init_db_indexes
-from api import auth, footprint, bill, room, coach, twin, gamification
+from core.settings import EnvironmentType
+from api import auth, footprint, bill, room, coach, twin, gamification, report
+from middleware.security_headers import SecurityHeadersMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,6 +28,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Register Security Headers
+app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS configurations
 app.add_middleware(
@@ -47,10 +52,14 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logging.error(f"Unhandled exception: {exc}", exc_info=True)
+    if settings.environment == EnvironmentType.PRODUCTION:
+        detail = "Internal Server Error"
+    else:
+        detail = f"Internal Server Error: {str(exc)}"
     return JSONResponse(
         status_code=500,
         content={
-            "detail": f"Internal Server Error: {str(exc)}",
+            "detail": detail,
             "type": type(exc).__name__
         }
     )
@@ -63,11 +72,39 @@ app.include_router(room.router, prefix="/api")
 app.include_router(coach.router, prefix="/api")
 app.include_router(twin.router, prefix="/api")
 app.include_router(gamification.router, prefix="/api")
+app.include_router(report.router, prefix="/api")
 
 @app.get("/")
 async def root():
     return {
         "status": "healthy",
         "service": "EcoPilot AI Backend",
+        "environment": settings.environment
+    }
+
+@app.get("/health")
+async def health_check():
+    db = await get_db()
+    if hasattr(db, "_collections"):
+        db_status = "healthy (mock-in-memory)"
+    else:
+        try:
+            await db.command('ping')
+            db_status = "healthy"
+        except Exception as e:
+            db_status = f"unhealthy: {e}"
+            
+    from ai.gemini_ai import GeminiAIService
+    gemini = GeminiAIService()
+    ai_status = "mock-offline" if gemini.is_mock else "healthy"
+    
+    overall = "healthy"
+    if "unhealthy" in db_status:
+        overall = "unhealthy"
+        
+    return {
+        "status": overall,
+        "database": db_status,
+        "ai_service": ai_status,
         "environment": settings.environment
     }

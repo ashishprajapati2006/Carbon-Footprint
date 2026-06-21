@@ -2,6 +2,7 @@ import os
 import pickle
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from bson import ObjectId
 import pandas as pd
 
@@ -51,7 +52,7 @@ class TwinController:
     @staticmethod
     async def simulate_carbon_twin(
         payload: TwinSimulationRequest,
-        db,
+        db: Any,
         current_user: dict
     ) -> TwinSimulationResponse:
         repo = TwinRepository(db)

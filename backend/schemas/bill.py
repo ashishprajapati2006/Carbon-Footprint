@@ -1,5 +1,6 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from typing import List, Dict, Any
+from pydantic import BaseModel, Field, ConfigDict
 from .base import PyObjectId
 
 
@@ -8,14 +9,15 @@ class BillAnalysisResponse(BaseModel):
     user_id: PyObjectId
     file_url: str
     billing_period: str
-    kwh_consumed: float
+    consumption_value: float
+    consumption_unit: str
     total_cost: float
     carbon_footprint_kg: float
+    savings_opportunities: List[str]
+    trend: Dict[str, Any]
     extracted_raw_text: str
     analyzed_at: datetime
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )

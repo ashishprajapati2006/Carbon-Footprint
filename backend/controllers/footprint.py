@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Any
 from bson import ObjectId
 
 from services.carbon_calc import CarbonCalculatorService
@@ -9,7 +10,7 @@ from schemas.footprint import FootprintLogCreate, FootprintLogResponse, Simulati
 
 class FootprintController:
     @staticmethod
-    async def log_footprint(log_data: FootprintLogCreate, db, current_user: dict) -> FootprintLogResponse:
+    async def log_footprint(log_data: FootprintLogCreate, db: Any, current_user: dict) -> FootprintLogResponse:
         repo = FootprintRepository(db)
         total_co2 = 0.0
         categories = {}
@@ -67,17 +68,17 @@ class FootprintController:
         return FootprintLogResponse(**log_entry)
 
     @staticmethod
-    async def get_history(db, current_user: dict) -> list:
+    async def get_history(db: Any, current_user: dict) -> list:
         repo = FootprintRepository(db)
         return await repo.get_history(current_user["id"])
 
     @staticmethod
-    async def predict_trends(db, current_user: dict) -> list:
+    async def predict_trends(db: Any, current_user: dict) -> list:
         predictor = EmissionPredictionService(db)
         return await predictor.predict_future_trend(current_user["id"], months_ahead=6)
 
     @staticmethod
-    async def run_lifestyle_simulation(sim_data: SimulationRequest, db, current_user: dict) -> SimulationResponse:
+    async def run_lifestyle_simulation(sim_data: SimulationRequest, db: Any, current_user: dict) -> SimulationResponse:
         repo = FootprintRepository(db)
         # Find user's last logged footprint or assign default
         logs = await repo.get_history(current_user["id"], limit=100)

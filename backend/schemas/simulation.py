@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from .base import PyObjectId
 
 
@@ -20,10 +20,8 @@ class SimulationRunResponse(BaseModel):
     original_co2_kg: float
     projected_co2_kg: float
     savings_percentage: float
-    simulated_at: datetime = Field(default_factory=datetime.utcnow)
+    simulated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )

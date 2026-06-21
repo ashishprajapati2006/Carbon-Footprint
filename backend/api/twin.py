@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from typing import Any
 
 from core.database import get_db
 from core.security import get_current_user
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/twin", tags=["Carbon Twin Simulation"])
 @router.post("/simulate", response_model=TwinSimulationResponse)
 async def simulate_carbon_twin(
     payload: TwinSimulationRequest,
-    db = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     """

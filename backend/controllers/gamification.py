@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Any
 from fastapi import HTTPException, status
 from bson import ObjectId
 
@@ -7,19 +8,19 @@ from services.gamification_svc import GamificationService
 
 class GamificationController:
     @staticmethod
-    async def get_user_stats(db, current_user: dict) -> dict:
+    async def get_user_stats(db: Any, current_user: dict) -> dict:
         user_id = current_user["id"]
         stats = await GamificationService.get_user_stats(user_id, db)
         return stats
 
     @staticmethod
-    async def get_leaderboard(period: str, db, current_user: dict) -> dict:
+    async def get_leaderboard(period: str, db: Any, current_user: dict) -> dict:
         user_id = current_user["id"]
         leaderboard = await GamificationService.get_leaderboard(period, db, current_user_id=user_id)
         return leaderboard
 
     @staticmethod
-    async def get_challenges(db, current_user: dict) -> list:
+    async def get_challenges(db: Any, current_user: dict) -> list:
         user_id = current_user["id"]
         repo = GamificationRepository(db)
         
@@ -101,7 +102,7 @@ class GamificationController:
         return formatted_challenges
 
     @staticmethod
-    async def claim_challenge(challenge_id: str, db, current_user: dict) -> dict:
+    async def claim_challenge(challenge_id: str, db: Any, current_user: dict) -> dict:
         user_id = current_user["id"]
         repo = GamificationRepository(db)
         

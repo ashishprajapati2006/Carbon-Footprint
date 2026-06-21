@@ -7,7 +7,7 @@ import {
   Calendar, MessageSquare, AlertCircle, Leaf,
   Menu, X
 } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
 export default function CoachChat() {
@@ -25,9 +25,7 @@ export default function CoachChat() {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${backendUrl}/sessions`, {
-        headers: getAuthHeaders()
-      });
+      const res = await apiFetch(`${backendUrl}/sessions`);
       if (res.ok) {
         const data = await res.json();
         setSessions(data);
@@ -61,9 +59,7 @@ export default function CoachChat() {
   const loadSession = async (sessionId: string) => {
     setLoadingHistory(true);
     try {
-      const res = await fetch(`${backendUrl}/sessions/${sessionId}`, {
-        headers: getAuthHeaders()
-      });
+      const res = await apiFetch(`${backendUrl}/sessions/${sessionId}`);
       if (res.ok) {
         const data = await res.json();
         setActiveSession(data);
@@ -80,9 +76,8 @@ export default function CoachChat() {
   const createNewSession = async (): Promise<any | null> => {
     setCreatingSession(true);
     try {
-      const res = await fetch(`${backendUrl}/sessions`, {
-        method: "POST",
-        headers: getAuthHeaders()
+      const res = await apiFetch(`${backendUrl}/sessions`, {
+        method: "POST"
       });
       if (res.ok) {
         const newSess = await res.json();
@@ -119,9 +114,8 @@ export default function CoachChat() {
   const deleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await fetch(`${backendUrl}/sessions/${sessionId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders()
+      await apiFetch(`${backendUrl}/sessions/${sessionId}`, {
+        method: "DELETE"
       });
       setSessions(prev => prev.filter(s => s._id !== sessionId));
       if (activeSession?._id === sessionId) {
@@ -207,11 +201,10 @@ export default function CoachChat() {
     // ── Real backend streaming ───────────────────────────────────────────
     try {
       // Call streaming endpoint
-      const response = await fetch(`${backendUrl}/sessions/${sessId}/message/stream`, {
+      const response = await apiFetch(`${backendUrl}/sessions/${sessId}/message/stream`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders()
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ message: userText })
       });

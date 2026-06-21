@@ -6,7 +6,7 @@ import {
   Upload, FileText, Zap, DollarSign, Leaf, Trash2, Calendar, 
   CheckCircle, ArrowUpRight, ArrowDownRight, TrendingUp, Sparkles, Printer, X, RefreshCw
 } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 import { BillAnalysis } from "@/types";
 import { UtilityTrendChart } from "@/components/charts/UtilityTrendChart";
 
@@ -23,9 +23,7 @@ export default function BillAnalyzer() {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch(backendUrl, {
-        headers: getAuthHeaders()
-      });
+      const res = await apiFetch(backendUrl);
       if (res.ok) {
         const data = await res.json();
         setHistory(data);
@@ -120,9 +118,8 @@ export default function BillAnalyzer() {
     formData.append("file", file);
 
     try {
-      const res = await fetch(`${backendUrl}/upload`, {
+      const res = await apiFetch(`${backendUrl}/upload`, {
         method: "POST",
-        headers: getAuthHeaders(),
         body: formData
       });
       if (res.ok) {
@@ -228,6 +225,7 @@ export default function BillAnalyzer() {
                 <span className="text-xs text-slate-300 font-semibold truncate max-w-[200px]">{file.name}</span>
                 <button 
                   onClick={() => setFile(null)}
+                  aria-label="Remove uploaded file"
                   className="text-slate-500 hover:text-rose-400 transition-colors ml-4 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -529,14 +527,7 @@ export default function BillAnalyzer() {
                 </button>
                 <button
                   onClick={() => {
-                    const printContents = document.getElementById("printable-bill-report")?.innerHTML;
-                    const originalContents = document.body.innerHTML;
-                    if (printContents) {
-                      document.body.innerHTML = printContents;
-                      window.print();
-                      document.body.innerHTML = originalContents;
-                      window.location.reload(); // Reload to restore Next.js script attachments
-                    }
+                    window.print();
                   }}
                   className="py-2 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs transition-colors cursor-pointer font-bold flex items-center gap-1.5"
                 >

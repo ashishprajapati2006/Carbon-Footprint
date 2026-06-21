@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 class GamificationRepository:
-    def __init__(self, db):
+    def __init__(self, db: Any):
         self.db = db
 
     async def get_points_logs(self, user_id: str, limit: int = 100) -> List[Dict[str, Any]]:

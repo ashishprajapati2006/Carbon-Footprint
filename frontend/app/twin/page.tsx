@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Compass, Sparkles, RefreshCw, AlertTriangle, ShieldCheck, HelpCircle, DollarSign, Leaf, Plane, Zap } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 import { ChartDataPoint, SimulationResult } from "@/types";
 
 export default function CarbonTwin() {
@@ -31,11 +31,10 @@ export default function CarbonTwin() {
     };
 
     try {
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch(backendUrl, {
         method: "POST",
         headers: { 
-          "Content-Type": "application/json",
-          ...getAuthHeaders()
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(payload)
       });

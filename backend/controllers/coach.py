@@ -1,10 +1,11 @@
 import hashlib
 import json
 import logging
-from datetime import datetime
+import time
+from datetime import datetime, timezone
+from typing import Any, List
 from fastapi import HTTPException, status
 from fastapi.responses import StreamingResponse
-from sse_starlette.sse import EventSourceResponse
 from bson import ObjectId
 
 from ai.gemini_ai import GeminiAIService
@@ -16,16 +17,20 @@ logger = logging.getLogger("ecopilot.coach")
 
 class CoachController:
     @staticmethod
-    async def assess_habits(log_data: SustainabilityAssessmentRequest, db, current_user: dict) -> dict:
+    async def assess_habits(log_data: SustainabilityAssessmentRequest, db: Any, current_user: dict) -> dict:
         repo = CoachRepository(db)
         # Compute sha256 cache key from habits contents to optimize latency
         cache_str = f"{log_data.travel}||{log_data.food}||{log_data.electricity}||{log_data.waste}||{log_data.water}"
         cache_key = hashlib.sha256(cache_str.encode("utf-8")).hexdigest()
         
+        start_time = time.perf_counter()
         cached_result = assessment_cache.get(cache_key)
         if cached_result:
             logger.info("Serving cached habits assessment.")
             assessment_json = cached_result
+            response_time = time.perf_counter() - start_time
+            prompt_tokens = 0
+            completion_tokens = 0
         else:
             logger.info("Requesting new habits analysis from Gemini.")
             gemini = GeminiAIService()
@@ -37,24 +42,35 @@ class CoachController:
                     waste=log_data.waste,
                     water=log_data.water
                 )
+                response_time = time.perf_counter() - start_time
+                # Estimate tokens
+                prompt_tokens = (len(log_data.travel) + len(log_data.food) + len(log_data.electricity) + len(log_data.waste) + len(log_data.water)) // 4
+                completion_tokens = len(json.dumps(assessment_json)) // 4
                 # Cache results
                 assessment_cache.set(cache_key, assessment_json)
             except Exception as e:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Gemini analysis failed: {e}"
+                    detail=f"Gemini habits analysis failed: {e}"
                 )
 
         # Retrieve or create coaching session
         session_id = log_data.session_id
-        if not session_id:
+        if session_id:
+            session = await repo.get_session_by_id(session_id)
+            if not session or str(session["user_id"]) != current_user["id"]:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Coaching session not found."
+                )
+        else:
             # Spawn new thread
             new_session = {
                 "user_id": ObjectId(current_user["id"]),
-                "session_title": f"Eco Profile - {datetime.utcnow().strftime('%b %d, %H:%M')}",
+                "session_title": f"Eco Profile - {datetime.now(timezone.utc).strftime('%b %d, %H:%M')}",
                 "messages": [],
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
             }
             session_id = await repo.create_session(new_session)
 
@@ -72,9 +88,14 @@ class CoachController:
         user_msg = {
             "role": "user",
             "content": user_message_content,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.now(timezone.utc)
         }
-        await repo.add_message(session_id, user_msg)
+        await repo.add_message(
+            session_id,
+            user_msg,
+            token_usage={"prompt_tokens": len(user_message_content) // 4, "completion_tokens": 0, "total_tokens": len(user_message_content) // 4},
+            response_time=0.0
+        )
 
         # Format assistant audit report message
         md = "### 🌱 Sustainability Assessment Report\n\n"
@@ -100,9 +121,19 @@ class CoachController:
         assistant_msg = {
             "role": "assistant",
             "content": assistant_report,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.now(timezone.utc)
         }
-        await repo.add_message(session_id, assistant_msg)
+        await repo.add_message(
+            session_id,
+            assistant_msg,
+            model="gemini-2.5-flash",
+            token_usage={
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens
+            },
+            response_time=response_time
+        )
 
         # Format output
         return {
@@ -115,9 +146,9 @@ class CoachController:
         }
 
     @staticmethod
-    async def get_sessions(db, current_user: dict) -> list:
+    async def get_sessions(db: Any, current_user: dict, limit: int = 100, offset: int = 0) -> list:
         repo = CoachRepository(db)
-        sessions = await repo.get_sessions(current_user["id"])
+        sessions = await repo.get_sessions(current_user["id"], limit, offset)
         for s in sessions:
             if isinstance(s.get("created_at"), datetime):
                 s["created_at"] = s["created_at"].isoformat()
@@ -126,7 +157,7 @@ class CoachController:
         return sessions
 
     @staticmethod
-    async def create_session(db, current_user: dict) -> dict:
+    async def create_session(db: Any, current_user: dict) -> dict:
         repo = CoachRepository(db)
         welcome_text = (
             "Hello! I am EcoPilot, your AI Sustainability Coach. "
@@ -134,20 +165,36 @@ class CoachController:
         )
         new_session = {
             "user_id": ObjectId(current_user["id"]),
-            "session_title": f"Conversation thread - {datetime.utcnow().strftime('%b %d')}",
+            "session_title": f"Conversation thread - {datetime.now(timezone.utc).strftime('%b %d')}",
             "messages": [
                 {
                     "role": "assistant",
                     "content": welcome_text,
-                    "timestamp": datetime.utcnow()
+                    "timestamp": datetime.now(timezone.utc)
                 }
             ],
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         }
         sess_id = await repo.create_session(new_session)
         new_session["_id"] = sess_id
         new_session["user_id"] = str(new_session["user_id"])
+        
+        # Save welcome message to chat_history too!
+        await repo.db["chat_history"].insert_one({
+            "conversation_id": ObjectId(sess_id),
+            "session_id": ObjectId(sess_id),
+            "user_id": ObjectId(current_user["id"]),
+            "timestamp": new_session["messages"][0]["timestamp"],
+            "role": "assistant",
+            "message": welcome_text,
+            "content": welcome_text,
+            "model": "gemini-2.5-flash",
+            "token_usage": {"prompt_tokens": 0, "completion_tokens": len(welcome_text) // 4, "total_tokens": len(welcome_text) // 4},
+            "response_time": 0.0,
+            "metadata": {},
+            "updated_at": datetime.now(timezone.utc)
+        })
         
         new_session["messages"][0]["timestamp"] = new_session["messages"][0]["timestamp"].isoformat()
         new_session["created_at"] = new_session["created_at"].isoformat()
@@ -155,16 +202,22 @@ class CoachController:
         return new_session
 
     @staticmethod
-    async def get_session(session_id: str, db, current_user: dict) -> dict:
+    async def get_session(session_id: str, db: Any, current_user: dict, limit: int = 100, offset: int = 0) -> dict:
         repo = CoachRepository(db)
         session = await repo.get_session_by_id(session_id)
         if not session or session["user_id"] != current_user["id"]:
             raise HTTPException(status_code=404, detail="Coaching session not found")
         
-        # Serialize datetimes
-        for msg in session.get("messages", []):
-            if isinstance(msg.get("timestamp"), datetime):
-                msg["timestamp"] = msg["timestamp"].isoformat()
+        # Retrieve flat messages from chat_history collection
+        flat_messages = await repo.get_messages(session_id, limit, offset)
+        if flat_messages:
+            session["messages"] = flat_messages
+        else:
+            # Fallback to legacy field serialization
+            for msg in session.get("messages", []):
+                if isinstance(msg.get("timestamp"), datetime):
+                    msg["timestamp"] = msg["timestamp"].isoformat()
+        
         if isinstance(session.get("created_at"), datetime):
             session["created_at"] = session["created_at"].isoformat()
         if isinstance(session.get("updated_at"), datetime):
@@ -173,7 +226,19 @@ class CoachController:
         return session
 
     @staticmethod
-    async def delete_session(session_id: str, db, current_user: dict) -> dict:
+    async def update_session(session_id: str, title: str, db: Any, current_user: dict) -> dict:
+        repo = CoachRepository(db)
+        session = await repo.get_session_by_id(session_id)
+        if not session or session["user_id"] != current_user["id"]:
+            raise HTTPException(status_code=404, detail="Coaching session not found")
+            
+        success = await repo.update_session_title(session_id, title)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update session title")
+        return {"message": "Coaching session title updated successfully.", "session_id": session_id, "session_title": title}
+
+    @staticmethod
+    async def delete_session(session_id: str, db: Any, current_user: dict) -> dict:
         repo = CoachRepository(db)
         session = await repo.get_session_by_id(session_id)
         if not session or session["user_id"] != current_user["id"]:
@@ -183,28 +248,61 @@ class CoachController:
         return {"message": "Coaching thread deleted successfully."}
 
     @staticmethod
-    async def stream_coach_message(session_id: str, payload: ChatMessageRequest, db, current_user: dict) -> StreamingResponse:
+    async def stream_coach_message(session_id: str, payload: ChatMessageRequest, db: Any, current_user: dict) -> StreamingResponse:
         repo = CoachRepository(db)
         session = await repo.get_session_by_id(session_id)
         if not session or session["user_id"] != current_user["id"]:
             raise HTTPException(status_code=404, detail="Coaching session not found")
 
-        # Append user message
+        # Fetch complete messages from the session (up to 1000)
+        messages_list = await repo.get_messages(session_id, limit=1000, offset=0)
+        if not messages_list:
+            messages_list = session.get("messages", [])
+
+        # Trim context: send only the last 10 messages for active history
+        trimmed_history = messages_list[-10:]
+        history = [{"role": msg["role"], "content": msg.get("content") or msg.get("message") or ""} for msg in trimmed_history]
+
+        # Calculate / retrieve summary of older history context
+        older_history = messages_list[:-10]
+        history_summary = session.get("history_summary", "")
+        summarized_count = session.get("summarized_count", 0)
+        new_count = len(older_history)
+
+        if new_count > 0 and (not history_summary or new_count >= summarized_count + 4):
+            gemini = GeminiAIService()
+            try:
+                history_summary = await gemini.generate_history_summary(older_history)
+                await repo.db["coaching_sessions"].update_one(
+                    {"_id": ObjectId(session_id)},
+                    {"$set": {"history_summary": history_summary, "summarized_count": new_count}}
+                )
+                logger.info(f"Updated coaching history summary for session {session_id} ({new_count} messages summarized).")
+            except Exception as e:
+                logger.error(f"Error computing history summary: {e}")
+
+        # Append user message to database
         user_msg = {
             "role": "user",
             "content": payload.message,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.now(timezone.utc)
         }
-        await repo.add_message(session_id, user_msg)
-
-        # Prepare messages history format for LLM context
-        history = [{"role": msg["role"], "content": msg["content"]} for msg in session.get("messages", [])]
+        # Estimate input tokens
+        input_token_est = (len(payload.message) + sum(len(h["content"]) for h in history)) // 4
+        await repo.add_message(
+            session_id=session_id,
+            message=user_msg,
+            model="gemini-2.5-flash",
+            token_usage={"prompt_tokens": input_token_est, "completion_tokens": 0, "total_tokens": input_token_est},
+            response_time=0.0
+        )
         
         async def event_generator():
             gemini = GeminiAIService()
             accumulated_response = ""
+            start_time = time.perf_counter()
             try:
-                async for chunk in gemini.generate_chat_response_stream(history, payload.message):
+                async for chunk in gemini.generate_chat_response_stream(history, payload.message, history_summary=history_summary):
                     if chunk:
                         accumulated_response += chunk
                         yield chunk
@@ -214,12 +312,31 @@ class CoachController:
                 accumulated_response += err_msg
                 yield err_msg
 
-            # Save assistant response
+            end_time = time.perf_counter()
+            response_time_sec = end_time - start_time
+            completion_token_est = len(accumulated_response) // 4
+
+            # Save assistant response to DB
             assistant_msg = {
                 "role": "assistant",
                 "content": accumulated_response,
-                "timestamp": datetime.utcnow()
+                "timestamp": datetime.now(timezone.utc)
             }
-            await repo.add_message(session_id, assistant_msg)
+            await repo.add_message(
+                session_id=session_id,
+                message=assistant_msg,
+                model="gemini-2.5-flash",
+                token_usage={
+                    "prompt_tokens": input_token_est,
+                    "completion_tokens": completion_token_est,
+                    "total_tokens": input_token_est + completion_token_est
+                },
+                response_time=response_time_sec
+            )
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    @staticmethod
+    async def search_chat_history(q: str, limit: int, db: Any, current_user: dict) -> list:
+        repo = CoachRepository(db)
+        return await repo.search_messages(current_user["id"], q, limit)

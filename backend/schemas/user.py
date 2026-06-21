@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from .base import PyObjectId
 
 
@@ -13,9 +13,20 @@ class ProfileSchema(BaseModel):
 
 class UserRegister(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8)
     full_name: str
     profile: Optional[ProfileSchema] = Field(default_factory=ProfileSchema)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if not any(char.isupper() for char in v):
+            raise ValueError("Password must contain at least one uppercase letter.")
+        if not any(char.islower() for char in v):
+            raise ValueError("Password must contain at least one lowercase letter.")
+        if not any(char.isdigit() for char in v):
+            raise ValueError("Password must contain at least one number.")
+        return v
 
 
 class UserLogin(BaseModel):
@@ -30,11 +41,9 @@ class UserResponse(BaseModel):
     profile: ProfileSchema
     created_at: datetime
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
 
 
 class TokenResponse(BaseModel):
@@ -54,4 +63,15 @@ class PasswordResetRequest(BaseModel):
 
 class PasswordResetConfirm(BaseModel):
     token: str
-    new_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if not any(char.isupper() for char in v):
+            raise ValueError("Password must contain at least one uppercase letter.")
+        if not any(char.islower() for char in v):
+            raise ValueError("Password must contain at least one lowercase letter.")
+        if not any(char.isdigit() for char in v):
+            raise ValueError("Password must contain at least one number.")
+        return v

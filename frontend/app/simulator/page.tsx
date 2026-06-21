@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Compass, Sparkles, CheckSquare, RefreshCw, Leaf, ArrowRight, Zap, Car } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 
 export default function Simulator() {
   const [vehicle, setVehicle] = useState("petrol");
@@ -26,11 +26,10 @@ export default function Simulator() {
     };
 
     try {
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch(backendUrl, {
         method: "POST",
         headers: { 
-          "Content-Type": "application/json",
-          ...getAuthHeaders()
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(payload)
       });
@@ -96,11 +95,12 @@ export default function Simulator() {
           <form onSubmit={triggerSimulation} className="space-y-5 text-xs">
             {/* Travel commute */}
             <div className="space-y-1">
-              <label className="text-slate-450 font-semibold flex items-center gap-1.5">
+              <label htmlFor="vehicle-select" className="text-slate-450 font-semibold flex items-center gap-1.5">
                 <Car className="w-3.5 h-3.5 text-blue-500" />
                 Transit Commute Swap
               </label>
               <select 
+                id="vehicle-select"
                 value={vehicle}
                 onChange={e => setVehicle(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 px-3 text-slate-350 focus:outline-none focus:border-emerald-500"
@@ -115,11 +115,12 @@ export default function Simulator() {
 
             {/* Diet choice */}
             <div className="space-y-1">
-              <label className="text-slate-450 font-semibold flex items-center gap-1.5">
+              <label htmlFor="diet-select" className="text-slate-450 font-semibold flex items-center gap-1.5">
                 <Leaf className="w-3.5 h-3.5 text-emerald-500" />
                 Culinary Dietary Choice
               </label>
               <select 
+                id="diet-select"
                 value={diet}
                 onChange={e => setDiet(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 px-3 text-slate-350 focus:outline-none focus:border-emerald-500"
@@ -133,13 +134,15 @@ export default function Simulator() {
 
             {/* Energy option */}
             <div className="space-y-1">
-              <label className="text-slate-450 font-semibold flex items-center gap-1.5">
+              <label htmlFor="solar-button" className="text-slate-450 font-semibold flex items-center gap-1.5">
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
                 Residential Upgrades
               </label>
               <button 
+                id="solar-button"
                 type="button"
                 onClick={() => setSolar(!solar)}
+                aria-pressed={solar}
                 className={`w-full py-2.5 px-3 border rounded-lg transition-all text-left font-bold ${
                   solar ? "bg-amber-950/20 text-amber-400 border-amber-500" : "bg-slate-950 border-slate-800 text-slate-500"
                 }`}

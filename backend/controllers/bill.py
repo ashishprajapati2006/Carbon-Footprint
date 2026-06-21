@@ -1,8 +1,10 @@
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from fastapi import UploadFile, HTTPException, status
 from bson import ObjectId
 
+from core.config import settings
 from ocr.ocr_svc import OCRService
 from services.analysis_svc import BillAnalysisService
 from ai.gemini_ai import GeminiAIService
@@ -14,26 +16,23 @@ logger = logging.getLogger("ecopilot.bill")
 
 class BillController:
     @staticmethod
-    async def upload_bill(file: UploadFile, db, current_user: dict) -> dict:
-        filename = file.filename or ""
-        ext = filename.split(".")[-1].lower() if "." in filename else ""
-        valid_extensions = {"pdf", "png", "jpg", "jpeg"}
+    async def upload_bill(file: UploadFile, db: Any, current_user: dict) -> dict:
+        from utils.file_validator import validate_uploaded_file, sanitize_filename
         
-        if ext not in valid_extensions:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file format '.{ext}'. Upload PDF, PNG, JPG, or JPEG statements."
-            )
-
-        # 2. Read file bytes
+        allowed_exts = {"pdf", "png", "jpg", "jpeg"}
+        allowed_mimes = {"application/pdf", "image/png", "image/jpeg", "image/jpg"}
+        
         try:
-            file_bytes = await file.read()
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to read upload stream: {e}"
+            file_bytes = await validate_uploaded_file(
+                file=file,
+                allowed_extensions=allowed_exts,
+                allowed_mimes=allowed_mimes,
+                max_size=settings.max_upload_size
             )
+        finally:
+            await file.close()
             
+        filename = sanitize_filename(file.filename or "statement.jpg")
         content_type = file.content_type or "image/jpeg"
 
         # 3. Trigger Gemini Analysis Service
@@ -161,6 +160,6 @@ class BillController:
             )
 
     @staticmethod
-    async def get_bills(db, current_user: dict) -> list:
+    async def get_bills(db: Any, current_user: dict) -> list:
         repo = BillRepository(db)
         return await repo.get_history(current_user["id"])

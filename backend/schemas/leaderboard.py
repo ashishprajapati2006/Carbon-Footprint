@@ -1,5 +1,6 @@
-from datetime import datetime
-from pydantic import BaseModel, Field
+from datetime import datetime, timezone
+from typing import List
+from pydantic import BaseModel, Field, ConfigDict
 from .base import PyObjectId
 
 
@@ -17,10 +18,27 @@ class LeaderboardEntryResponse(BaseModel):
     level_name: str
     monthly_co2_kg: float
     rank_position: int
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+
+
+class UserStatsResponse(BaseModel):
+    points: int
+    weekly_points: int
+    monthly_points: int
+    level: int
+    xp_in_level: int
+    badges: List[str]
+
+
+class LeaderboardResponse(BaseModel):
+    rank: int
+    user_id: str
+    name: str
+    level: str
+    points: int
+    monthly_co2_kg: float
+    isMe: bool

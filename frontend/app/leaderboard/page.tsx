@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Award, Trophy, Users, ShieldCheck, ChevronUp, Globe, Calendar, Zap } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 
 export default function Leaderboard() {
   const [activeTab, setActiveTab] = useState("global");
@@ -34,9 +34,7 @@ export default function Leaderboard() {
   const fetchLeaderboard = async () => {
     setLoading(true);
     try {
-      const res = await fetch(getBackendUrl(`/gamification/leaderboard?period=${activeTab}`), {
-        headers: getAuthHeaders()
-      });
+      const res = await apiFetch(getBackendUrl(`/gamification/leaderboard?period=${activeTab}`));
       if (res.ok) {
         const data = await res.json();
         setRankings(data);

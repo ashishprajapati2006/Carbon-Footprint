@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Award, CheckCircle, Zap, Car, Leaf, Trash2, ArrowRight } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 
 export default function Challenges() {
   const [userXp, setUserXp] = useState(380);
@@ -40,17 +40,13 @@ export default function Challenges() {
 
   const fetchGamificationData = async () => {
     try {
-      const statsRes = await fetch(getBackendUrl("/gamification/stats"), {
-        headers: getAuthHeaders()
-      });
+      const statsRes = await apiFetch(getBackendUrl("/gamification/stats"));
       if (statsRes.ok) {
         const stats = await statsRes.json();
         setUserXp(stats.points);
       }
       
-      const questsRes = await fetch(getBackendUrl("/gamification/challenges"), {
-        headers: getAuthHeaders()
-      });
+      const questsRes = await apiFetch(getBackendUrl("/gamification/challenges"));
       if (questsRes.ok) {
         const questsData = await questsRes.json();
         setQuests(questsData);
@@ -71,9 +67,8 @@ export default function Challenges() {
 
   const handleClaim = async (id: string) => {
     try {
-      const res = await fetch(getBackendUrl(`/gamification/challenges/${id}/claim`), {
-        method: "POST",
-        headers: getAuthHeaders()
+      const res = await apiFetch(getBackendUrl(`/gamification/challenges/${id}/claim`), {
+        method: "POST"
       });
       if (res.ok) {
         await fetchGamificationData();

@@ -47,7 +47,7 @@ class TestGamificationSuite(unittest.TestCase):
     def run_async(self, coro):
         """Helper to run async code synchronously in tests."""
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -58,6 +58,7 @@ class TestGamificationSuite(unittest.TestCase):
         db = DatabaseManager.get_db()
         db["points_logs"]._store = []
         db["challenges"]._store = []
+        db["leaderboard"]._store = []
         # Reset tester user points/badges in the users mock store
         for user in db["users"]._store:
             if user.get("email") == self.test_email:

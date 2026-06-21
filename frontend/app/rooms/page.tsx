@@ -8,7 +8,7 @@ import {
   Lightbulb, Zap, Trash2, Calendar, 
   DollarSign, Activity, Leaf, Eye, X, Image as ImageIcon
 } from "lucide-react";
-import { getBackendUrl, getAuthHeaders } from "@/services/api";
+import { getBackendUrl, apiFetch } from "@/services/api";
 
 export default function RoomScanner() {
   const [file, setFile] = useState<File | null>(null);
@@ -24,9 +24,7 @@ export default function RoomScanner() {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch(`${backendUrl}/scans`, {
-        headers: getAuthHeaders()
-      });
+      const res = await apiFetch(`${backendUrl}/scans`);
       if (res.ok) {
         const data = await res.json();
         setHistory(data);
@@ -133,9 +131,8 @@ export default function RoomScanner() {
     formData.append("room_type", roomType);
 
     try {
-      const res = await fetch(`${backendUrl}/scan`, {
+      const res = await apiFetch(`${backendUrl}/scan`, {
         method: "POST",
-        headers: getAuthHeaders(),
         body: formData
       });
       if (res.ok) {
@@ -268,10 +265,11 @@ export default function RoomScanner() {
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-slate-300 font-semibold text-xs uppercase tracking-wider block">
+                  <label htmlFor="roomType-select" className="text-slate-300 font-semibold text-xs uppercase tracking-wider block">
                     1. Room Type / Context
                   </label>
                   <select 
+                    id="roomType-select"
                     value={roomType}
                     onChange={e => setRoomType(e.target.value)}
                     className="w-full bg-slate-950/80 border border-slate-800 rounded-xl py-3 px-4 text-slate-200 text-sm focus:outline-none focus:border-emerald-500 transition-all cursor-pointer"
@@ -285,18 +283,20 @@ export default function RoomScanner() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-slate-300 font-semibold text-xs uppercase tracking-wider block">
+                  <label htmlFor="file-input" className="text-slate-300 font-semibold text-xs uppercase tracking-wider block">
                     2. Upload Room Capture
                   </label>
                   <button 
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
+                    aria-label="Browse Files to upload room capture"
                     className="w-full bg-slate-950/40 hover:bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl py-3 px-4 text-sm font-semibold flex items-center justify-center gap-2 transition-all"
                   >
                     <ImageIcon className="w-4 h-4 text-emerald-400" />
                     Browse Files
                   </button>
                   <input 
+                    id="file-input"
                     type="file" 
                     ref={fileInputRef}
                     onChange={handleFileChange}
@@ -325,13 +325,14 @@ export default function RoomScanner() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img 
                       src={filePreview} 
-                      alt="Selected preview" 
+                      alt={`Preview of selected upload: ${file?.name || 'room image'}`} 
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <button 
                         type="button" 
                         onClick={(e) => { e.stopPropagation(); clearSelectedFile(); }}
+                        aria-label="Remove uploaded image"
                         className="bg-rose-600 hover:bg-rose-700 text-white p-2 rounded-full shadow-lg transition-transform hover:scale-105"
                       >
                         <X className="w-5 h-5" />

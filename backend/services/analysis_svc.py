@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from datetime import datetime
+from typing import Any
 from bson import ObjectId
 
 from ai.gemini_ai import GeminiAIService
@@ -226,7 +227,7 @@ class BillAnalysisService:
             # Fallback factor
             return round(value * 0.4, 2)
 
-    async def calculate_trend(self, user_id: str, current_period: str, current_value: float, current_cost: float, current_unit: str, db) -> dict:
+    async def calculate_trend(self, user_id: str, current_period: str, current_value: float, current_cost: float, current_unit: str, db: Any) -> dict:
         """
         Queries MongoDB bill_analyses to find the previous bill of the same unit
         and computes the percentage usage difference.

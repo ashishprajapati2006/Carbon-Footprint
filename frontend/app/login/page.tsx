@@ -51,6 +51,9 @@ export default function LoginPage() {
 
       // Store tokens and metadata
       localStorage.setItem("token", data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem("refresh_token", data.refresh_token);
+      }
       localStorage.setItem("user", JSON.stringify({ email, full_name: data.full_name || fullName || "EcoPilot User" }));
 
       setSuccessMsg(isLogin ? "Welcome back! Redirecting..." : "Registration successful! Loading your dashboard...");
@@ -102,12 +105,13 @@ export default function LoginPage() {
                 transition={{ duration: 0.2 }}
                 className="space-y-1.5"
               >
-                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Full Name</label>
+                <label htmlFor="fullName-input" className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Full Name</label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500">
                     <User className="w-4 h-4" />
                   </span>
                   <input
+                    id="fullName-input"
                     type="text"
                     placeholder="Jane Doe"
                     value={fullName}
@@ -120,12 +124,13 @@ export default function LoginPage() {
           </AnimatePresence>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Email Address</label>
+            <label htmlFor="email-input" className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Email Address</label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500">
                 <Mail className="w-4 h-4" />
               </span>
               <input
+                id="email-input"
                 type="email"
                 placeholder="you@example.com"
                 value={email}
@@ -137,12 +142,13 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Password</label>
+            <label htmlFor="password-input" className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Password</label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500">
                 <Lock className="w-4 h-4" />
               </span>
               <input
+                id="password-input"
                 type="password"
                 placeholder="••••••••"
                 value={password}

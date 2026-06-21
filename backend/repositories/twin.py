@@ -2,7 +2,7 @@ from bson import ObjectId
 from typing import List, Dict, Any
 
 class TwinRepository:
-    def __init__(self, db):
+    def __init__(self, db: Any):
         self.db = db
 
     async def get_user_footprint_logs(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:

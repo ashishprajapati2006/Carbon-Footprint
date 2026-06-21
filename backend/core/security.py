@@ -2,7 +2,7 @@ import time
 import secrets
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Any
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 import jwt
@@ -78,11 +78,11 @@ def create_refresh_token() -> str:
     """Generates a secure random refresh token string."""
     return secrets.token_hex(32)
 
-async def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+async def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: Any = Depends(get_db)):
     """FastAPI dependency to extract and authorize the user session from a JWT bearer token.
     
-    Falls back to the demo user when no token or an invalid/expired token is provided,
-    so the app works seamlessly in development/demo mode without requiring login.
+    Falls back to the demo user ONLY in development/testing mode when no token is provided.
+    Raises HTTPException (401) immediately for any invalid/expired token, or if running in production.
     """
     # Allow token retrieval via query parameter (e.g. for PDF downloads)
     if not token:
@@ -98,11 +98,33 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
                 if user:
                     user["id"] = str(user["_id"])
                     return user
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="User associated with this token was not found."
+                )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type."
+            )
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has expired. Please log in again."
+            )
         except jwt.PyJWTError:
-            # Invalid / expired token — fall through to demo user
-            pass
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token credentials."
+            )
 
-    # No valid token: resolve or auto-create the demo user
+    # In production, we MUST reject requests without a valid token
+    if settings.environment == "production":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials were not provided."
+        )
+
+    # No token in non-production: resolve or auto-create the demo user
     demo_user = await db["users"].find_one({"email": "demo@ecopilot.ai"})
     if demo_user:
         demo_user["id"] = str(demo_user["_id"])

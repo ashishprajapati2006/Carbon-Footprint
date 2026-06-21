@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 class UserRepository:
-    def __init__(self, db):
+    def __init__(self, db: Any):
         self.db = db
 
     async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:

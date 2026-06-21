@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class EnergyFootprint(BaseModel):
@@ -40,11 +40,9 @@ class FootprintLogResponse(BaseModel):
     categories: Dict[str, dict]
     total_co2_kg: float
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
 
 
 class SimulationRequest(BaseModel):
@@ -58,3 +56,9 @@ class SimulationResponse(BaseModel):
     projected_co2_kg: float
     potential_saving_percentage: float
     recommendations: list[str]
+
+
+class PredictionPointResponse(BaseModel):
+    date: str
+    co2_kg: float
+    confidence: str

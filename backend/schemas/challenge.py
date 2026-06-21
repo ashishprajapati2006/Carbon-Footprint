@@ -1,5 +1,6 @@
-from datetime import datetime
-from pydantic import BaseModel, Field
+from datetime import datetime, timezone
+from typing import List
+from pydantic import BaseModel, Field, ConfigDict
 from .base import PyObjectId
 
 
@@ -14,8 +15,8 @@ class ChallengeCreate(BaseModel):
 
 
 class ChallengeResponse(BaseModel):
-    id: PyObjectId = Field(alias="_id")
-    user_id: PyObjectId
+    id: str
+    user_id: str
     quest_title: str
     description: str
     xp_yield: int
@@ -23,10 +24,15 @@ class ChallengeResponse(BaseModel):
     current_amount: int
     category: str
     status: str
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    class Config:
-        populate_by_name = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+
+
+class ChallengeClaimResponse(BaseModel):
+    message: str
+    awarded: int
+    total_points: int
+    badges_unlocked: List[str] = Field(default_factory=list)

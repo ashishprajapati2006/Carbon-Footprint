@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from fastapi import HTTPException, status
 from bson import ObjectId
 
@@ -13,7 +14,7 @@ from schemas.user import UserRegister, UserLogin, TokenResponse, TokenRefreshReq
 
 class AuthController:
     @staticmethod
-    async def register(user_data: UserRegister, db) -> TokenResponse:
+    async def register(user_data: UserRegister, db: Any) -> TokenResponse:
         repo = UserRepository(db)
         existing_user = await repo.get_by_email(user_data.email)
         if existing_user:
@@ -41,7 +42,7 @@ class AuthController:
         )
 
     @staticmethod
-    async def login(credentials: UserLogin, db) -> TokenResponse:
+    async def login(credentials: UserLogin, db: Any) -> TokenResponse:
         repo = UserRepository(db)
         user = await repo.get_by_email(credentials.email)
         if not user or not verify_password(credentials.password, user["password_hash"]):
@@ -65,7 +66,7 @@ class AuthController:
         )
 
     @staticmethod
-    async def refresh_tokens(payload: TokenRefreshRequest, db) -> TokenResponse:
+    async def refresh_tokens(payload: TokenRefreshRequest, db: Any) -> TokenResponse:
         repo = UserRepository(db)
         db_token = await repo.get_refresh_token(payload.refresh_token)
         if not db_token:
@@ -107,7 +108,7 @@ class AuthController:
         )
 
     @staticmethod
-    async def logout(payload: TokenRefreshRequest, db) -> dict:
+    async def logout(payload: TokenRefreshRequest, db: Any) -> dict:
         repo = UserRepository(db)
         deleted = await repo.delete_refresh_token(payload.refresh_token)
         if not deleted:
@@ -118,7 +119,7 @@ class AuthController:
         return {"message": "Successfully logged out."}
 
     @staticmethod
-    async def request_password_reset(payload: PasswordResetRequest, db) -> dict:
+    async def request_password_reset(payload: PasswordResetRequest, db: Any) -> dict:
         repo = UserRepository(db)
         user = await repo.get_by_email(payload.email)
         if not user:
@@ -136,7 +137,7 @@ class AuthController:
         return {"message": "If the email is registered, a reset link will be sent."}
 
     @staticmethod
-    async def confirm_password_reset(payload: PasswordResetConfirm, db) -> dict:
+    async def confirm_password_reset(payload: PasswordResetConfirm, db: Any) -> dict:
         repo = UserRepository(db)
         db_reset = await repo.get_password_reset(payload.token)
         if not db_reset:
