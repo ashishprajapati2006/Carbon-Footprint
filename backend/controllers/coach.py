@@ -1,3 +1,19 @@
+"""
+AI Coach Controller — Gemini-Powered Carbon Reduction Coaching.
+
+Orchestrates the conversational AI coaching experience for EcoPilot:
+  - Creates and manages user coaching sessions stored in MongoDB
+  - Streams AI responses from Google Gemini 2.5 Flash with SSE
+  - Maintains conversation context with automatic summarization after 10 turns
+  - Caches sustainability assessment responses to minimize token usage
+  - Provides keyword-based chat history search across all sessions
+
+The coach guides users toward actionable carbon reduction strategies aligned
+with their personal footprint data (energy, transport, diet, waste habits).
+Directly supports UN SDG 13 — Climate Action through personalized AI guidance.
+"""
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
@@ -14,6 +30,7 @@ from repositories.coach import CoachRepository
 from schemas.coach import SustainabilityAssessmentRequest, SustainabilityAssessmentResponse, ChatMessageRequest
 
 logger = logging.getLogger("ecopilot.coach")
+
 
 class CoachController:
     @staticmethod

@@ -1,3 +1,19 @@
+"""
+Footprint Controller — Carbon Footprint Tracking & Simulation.
+
+Orchestrates the user's carbon footprint logging workflow:
+  - Accepts per-category emission data (energy, transport, food, waste)
+  - Calculates category-level CO2 using EPA/IPCC emission factors
+  - Persists carbon logs to MongoDB for trend analysis
+  - Awards gamification points to incentivize regular tracking
+  - Runs lifestyle scenario simulations to project potential CO2 reductions
+
+Aligned with the core sustainability goal: empowering users to understand
+and reduce their personal carbon footprint.
+"""
+from __future__ import annotations
+
+import logging
 from datetime import datetime, timezone
 from typing import Any
 from bson import ObjectId
@@ -7,6 +23,9 @@ from services.gamification_svc import GamificationService
 from ml.predictor import EmissionPredictionService
 from repositories.footprint import FootprintRepository
 from schemas.footprint import FootprintLogCreate, FootprintLogResponse, SimulationRequest, SimulationResponse
+
+logger = logging.getLogger("ecopilot.footprint")
+
 
 class FootprintController:
     @staticmethod
@@ -62,8 +81,7 @@ class FootprintController:
         try:
             await GamificationService.award_points(current_user["id"], "daily_tracking", db)
         except Exception as e:
-            import logging
-            logging.getLogger("ecopilot.footprint").error(f"Failed to award daily tracking points: {e}")
+            logger.error("Failed to award daily tracking points: %s", e)
 
         return FootprintLogResponse(**log_entry)
 

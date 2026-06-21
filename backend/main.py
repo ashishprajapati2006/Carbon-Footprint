@@ -24,7 +24,15 @@ logging.basicConfig(
 
 app = FastAPI(
     title="EcoPilot AI - Green Platform API",
-    description="Backend API powering carbon analysis, image scans, and AI coaching.",
+    description=(
+        "Production-grade REST API for the EcoPilot AI sustainability platform. "
+        "Enables users to track personal carbon footprints across energy, transport, food, and waste categories; "
+        "receive AI-powered coaching via Google Gemini 2.5 Flash; "
+        "scan utility bills and room appliances for energy waste detection; "
+        "run lifestyle carbon twin simulations; "
+        "and compete on a sustainability leaderboard to drive collective carbon reduction. "
+        "All AI features are aligned with the UN SDG 13 (Climate Action) goal."
+    ),
     version="1.0.0",
     lifespan=lifespan
 )

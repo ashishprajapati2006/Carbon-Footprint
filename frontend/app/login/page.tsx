@@ -6,6 +6,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Leaf, Mail, Lock, User, ArrowRight, ShieldAlert, Sparkles, LogIn } from "lucide-react";
 import { getBackendUrl } from "@/services/api";
 
+/**
+ * Login & Registration page for EcoPilot AI.
+ *
+ * Provides unified authentication UI for new user registration and
+ * returning user sign-in. On successful auth, stores JWT tokens and
+ * redirects to the carbon dashboard. Password complexity is enforced
+ * server-side and error messages are surfaced accessibly via role="alert".
+ */
+
 export default function LoginPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
@@ -169,9 +178,15 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                aria-describedby={!isLogin ? "password-hint" : undefined}
                 className="w-full bg-slate-950/70 border border-slate-800 focus:border-emerald-500/80 rounded-xl py-3 pl-10 pr-4 text-xs text-white focus:outline-none transition-colors"
               />
             </div>
+            {!isLogin && (
+              <p id="password-hint" className="text-[10px] text-slate-500 mt-1">
+                Must be 8+ characters with at least one uppercase letter, lowercase letter, and number.
+              </p>
+            )}
           </div>
 
           {/* Feedback Messages */}
@@ -181,6 +196,8 @@ export default function LoginPage() {
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
+                role="alert"
+                aria-live="assertive"
                 className="p-3 bg-rose-950/30 border border-rose-500/30 text-rose-350 text-[11px] rounded-xl flex items-center gap-2"
               >
                 <ShieldAlert className="w-4 h-4 shrink-0 text-rose-500" />

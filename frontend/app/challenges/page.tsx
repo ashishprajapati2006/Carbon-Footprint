@@ -5,19 +5,39 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Award, CheckCircle, Zap, Car, Leaf, Trash2, ArrowRight } from "lucide-react";
 import { getBackendUrl, apiFetch } from "@/services/api";
 
+/** A sustainability challenge/quest record returned by the API. */
+interface EcoChallenge {
+  id: string;
+  quest_title: string;
+  description: string;
+  xp_yield: number;
+  category: string;
+  goal_amount: number;
+  current_amount: number;
+  status: "in_progress" | "completed" | "not_started";
+}
+
+/**
+ * Eco Challenges page — Gamified Carbon Reduction Quests.
+ *
+ * Presents users with actionable sustainability challenges across energy,
+ * transport, food, and waste categories. Completing challenges awards XP
+ * points that contribute to the leaderboard, driving long-term engagement
+ * with the carbon reduction mission via behavioural nudges.
+ */
 export default function Challenges() {
   const [userXp, setUserXp] = useState(380);
-  const [quests, setQuests] = useState<any[]>([]);
+  const [quests, setQuests] = useState<EcoChallenge[]>([]);
   const [loading, setLoading] = useState(true);
   
-  const initialQuests = [
+  const initialQuests: EcoChallenge[] = [
     { id: "q1", quest_title: "Meatless Commute", description: "Eat vegetarian or vegan meals for 3 consecutive days.", xp_yield: 120, category: "food", goal_amount: 3, current_amount: 2, status: "in_progress" },
     { id: "q2", quest_title: "Transit Traveler", description: "Swap driving single commutes for rail or bus travel.", xp_yield: 150, category: "transport", goal_amount: 1, current_amount: 0, status: "in_progress" },
     { id: "q3", quest_title: "Standby Shutdown", description: "Audit and unplug 5 idle phantom electrical loads.", xp_yield: 60, category: "energy", goal_amount: 5, current_amount: 5, status: "completed" },
     { id: "q4", quest_title: "Refuse Restraint", description: "Keep household waste below 5kg this week.", xp_yield: 80, category: "waste", goal_amount: 1, current_amount: 1, status: "completed" }
   ];
 
-  const iconMap: { [key: string]: any } = {
+  const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
     food: Leaf,
     transport: Car,
     energy: Zap,

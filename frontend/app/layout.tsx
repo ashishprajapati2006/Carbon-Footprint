@@ -10,6 +10,12 @@ import {
 import { getAuthUser, logoutUser } from "@/services/api";
 import "./globals.css";
 
+/** Authenticated user shape stored in localStorage. */
+interface AuthUser {
+  full_name: string;
+  email: string;
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -19,7 +25,7 @@ export default function RootLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     // Sync theme on mount
@@ -59,6 +65,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={theme}>
       <body className="antialiased min-h-screen flex text-slate-100 dark:text-slate-100 bg-background text-sm">
+        {/* Skip to main content — keyboard/screen reader accessibility */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-emerald-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:font-bold focus:text-xs"
+        >
+          Skip to main content
+        </a>
         
         {/* Toggle Theme Button (Floating on Mobile) */}
         <div className="fixed bottom-6 right-6 z-50 md:bottom-auto md:top-4 md:right-8">
@@ -82,7 +95,9 @@ export default function RootLayout({
           
           <button 
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            aria-label="Toggle Navigation Sidebar"
+            aria-label={sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={sidebarOpen}
+            aria-controls="sidebar-nav"
             className="p-1.5 border border-border rounded text-foreground hover:bg-emerald-950/10 transition-colors cursor-pointer"
           >
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -91,6 +106,9 @@ export default function RootLayout({
 
         {/* Navigation Sidebar Panel */}
         <aside 
+          id="sidebar-nav"
+          role="navigation"
+          aria-label="Application navigation"
           className={`fixed md:sticky top-0 left-0 z-40 h-screen w-60 border-r border-border bg-slate-950/40 md:bg-slate-950/15 backdrop-blur-xl flex flex-col justify-between py-6 px-4 transition-transform md:translate-x-0 ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
@@ -117,6 +135,7 @@ export default function RootLayout({
                     key={idx}
                     href={item.href}
                     onClick={() => setSidebarOpen(false)}
+                    aria-current={isActive ? "page" : undefined}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-semibold transition-all group ${
                       isActive 
                         ? "bg-emerald-600/10 text-emerald-400 border-l-2 border-emerald-500 pl-2.5" 
@@ -151,6 +170,7 @@ export default function RootLayout({
                     router.push("/login");
                   }}
                   className="p-1 rounded-lg hover:bg-slate-850 text-slate-400 hover:text-rose-450 transition-colors cursor-pointer shrink-0"
+                  aria-label="Sign out of EcoPilot"
                   title="Sign Out"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -178,7 +198,7 @@ export default function RootLayout({
 
         {/* Content Wrapper */}
         <div className="flex-1 min-h-screen flex flex-col pt-16 md:pt-0">
-          <main className="flex-grow w-full max-w-6xl mx-auto px-4 py-8 md:px-8">
+          <main id="main-content" className="flex-grow w-full max-w-6xl mx-auto px-4 py-8 md:px-8">
             {children}
           </main>
           

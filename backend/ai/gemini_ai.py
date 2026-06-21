@@ -29,6 +29,19 @@ logger = logging.getLogger("ecopilot.gemini")
 chat_response_cache = InMemoryCache(default_ttl=300)
 
 def _get_chat_cache_key(chat_history: list, new_message: str) -> str:
+    """
+    Generates a deterministic SHA-256 cache key for a given chat context.
+
+    The key is derived from the last 10 messages and the new user message,
+    ensuring repeated identical prompts hit the cache instead of Gemini API.
+
+    Args:
+        chat_history: List of previous conversation turns (role + content dicts).
+        new_message: The latest user message string to hash into the key.
+
+    Returns:
+        A 64-character hex SHA-256 digest string.
+    """
     # Trim history context to last 10 messages before caching to ensure unique key format
     trimmed = chat_history[-10:]
     history_serialized = json.dumps([{"role": m["role"], "content": m["content"]} for m in trimmed])
@@ -38,6 +51,10 @@ def _get_chat_cache_key(chat_history: list, new_message: str) -> str:
 # ── Model name – use the widely-available flash model ─────────────────────────
 _MODEL = "gemini-2.5-flash"
 _RATE_LIMIT_KEYWORDS = ("429", "quota", "resource_exhausted", "rate limit", "too many")
+
+# Retry configuration constants
+_MAX_RETRY_ATTEMPTS: int = 3
+_INITIAL_BACKOFF_SECONDS: float = 0.5
 
 
 def _is_rate_limit(err: Exception) -> bool:
@@ -76,17 +93,16 @@ class GeminiAIService:
     async def _execute_with_retry(self, func, *args, **kwargs):
         """
         Executes a synchronous API call with exponential backoff retry.
-        Up to 3 attempts, starting at 0.5s backoff.
+        Up to _MAX_RETRY_ATTEMPTS attempts, starting at _INITIAL_BACKOFF_SECONDS.
         """
-        attempts = 3
-        backoff = 0.5
-        for attempt in range(attempts):
+        backoff = _INITIAL_BACKOFF_SECONDS
+        for attempt in range(_MAX_RETRY_ATTEMPTS):
             try:
                 return func(*args, **kwargs)
             except Exception as exc:
                 if _is_rate_limit(exc):
                     raise exc
-                if attempt == attempts - 1:
+                if attempt == _MAX_RETRY_ATTEMPTS - 1:
                     raise exc
                 logger.warning(
                     f"Gemini API call failed on attempt {attempt + 1}: {exc}. "

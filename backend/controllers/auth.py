@@ -1,16 +1,34 @@
+"""
+Authentication Controller — User Registration, Login & Token Management.
+
+Handles all authentication lifecycle operations for EcoPilot AI:
+  - Secure user registration with bcrypt password hashing
+  - JWT access token issuance and refresh token rotation
+  - Session-aware logout by revoking stored refresh tokens
+  - Password reset via time-limited secure tokens
+
+Security standards: OWASP ASVS, bcrypt (12 rounds), JWT HS256,
+30-day refresh window with server-side revocation.
+"""
+from __future__ import annotations
+
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from fastapi import HTTPException, status
 from bson import ObjectId
 
 from core.security import (
-    get_password_hash, 
-    verify_password, 
-    create_access_token, 
+    get_password_hash,
+    verify_password,
+    create_access_token,
     create_refresh_token
 )
 from repositories.user import UserRepository
 from schemas.user import UserRegister, UserLogin, TokenResponse, TokenRefreshRequest, PasswordResetRequest, PasswordResetConfirm
+
+logger = logging.getLogger("ecopilot.auth")
+
 
 class AuthController:
     @staticmethod
@@ -130,9 +148,11 @@ class AuthController:
 
         await repo.create_password_reset(reset_token, payload.email, expire_at)
 
-        print(f"\n[SMTP MOCK] Password Reset Request for {payload.email}:")
-        print(f"  Token: {reset_token}")
-        print(f"  Expiration: {expire_at.isoformat()}\n")
+        logger.info(
+            "[PASSWORD RESET] Token issued for %s | Expiration: %s",
+            payload.email,
+            expire_at.isoformat()
+        )
 
         return {"message": "If the email is registered, a reset link will be sent."}
 

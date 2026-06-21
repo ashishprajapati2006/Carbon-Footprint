@@ -10,10 +10,34 @@ import {
 import { getBackendUrl, apiFetch } from "@/services/api";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 
+/** A coaching session record returned by the API. */
+interface ChatSession {
+  _id: string;
+  session_title: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+/** A single chat message in an active AI coaching conversation. */
+interface ChatMessage {
+  role: "user" | "assistant";
+  message: string;
+  content?: string;
+  timestamp?: string;
+}
+
+/**
+ * AI Coach Chat page — Gemini-Powered Carbon Reduction Coaching.
+ *
+ * Provides a real-time streaming chat interface with the EcoPilot AI coach.
+ * Users receive personalized, context-aware guidance on reducing their
+ * carbon footprint across energy, transport, diet, and waste dimensions.
+ * Session history is persisted to MongoDB for longitudinal coaching context.
+ */
 export default function CoachChat() {
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [activeSession, setActiveSession] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);

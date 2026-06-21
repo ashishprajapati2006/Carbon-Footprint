@@ -7,22 +7,55 @@ import {
 } from "lucide-react";
 import { getBackendUrl, apiFetch } from "@/services/api";
 
-// Mock Fallbacks
-const DEFAULT_LOGS = [
+/** Per-category CO2 breakdown for a single footprint log entry. */
+interface CategoryBreakdown {
+  co2_kg: number;
+}
+
+/** A single carbon footprint log entry returned by the API. */
+interface FootprintLog {
+  _id: string;
+  date: string;
+  categories: {
+    energy?: CategoryBreakdown;
+    transport?: CategoryBreakdown;
+    food?: CategoryBreakdown;
+    waste?: CategoryBreakdown;
+  };
+  total_co2_kg: number;
+}
+
+/** AI-generated carbon emission prediction for a future month. */
+interface PredictionPoint {
+  date: string;
+  co2_kg: number;
+  confidence: string;
+}
+
+// Mock Fallbacks — used when the backend is unreachable in offline/demo mode
+const DEFAULT_LOGS: FootprintLog[] = [
   { _id: "1", date: "2026-06-15", categories: { energy: { co2_kg: 140 }, transport: { co2_kg: 120 }, food: { co2_kg: 150 }, waste: { co2_kg: 30 } }, total_co2_kg: 440 },
   { _id: "2", date: "2026-05-15", categories: { energy: { co2_kg: 160 }, transport: { co2_kg: 140 }, food: { co2_kg: 150 }, waste: { co2_kg: 35 } }, total_co2_kg: 485 },
   { _id: "3", date: "2026-04-15", categories: { energy: { co2_kg: 180 }, transport: { co2_kg: 210 }, food: { co2_kg: 150 }, waste: { co2_kg: 40 } }, total_co2_kg: 580 },
 ];
 
-const DEFAULT_PREDICTIONS = [
+const DEFAULT_PREDICTIONS: PredictionPoint[] = [
   { date: "2026-07", co2_kg: 410, confidence: "medium" },
   { date: "2026-08", co2_kg: 390, confidence: "medium" },
   { date: "2026-09", co2_kg: 360, confidence: "medium" },
 ];
 
+/**
+ * Dashboard page — Carbon Footprint Tracking Hub.
+ *
+ * Allows authenticated users to log daily carbon footprint data
+ * (energy, transport, food, waste), view historical trends,
+ * and see AI-generated emission predictions for upcoming months.
+ * Directly supports the platform's core carbon reduction mission.
+ */
 export default function Dashboard() {
-  const [logs, setLogs] = useState<any[]>(DEFAULT_LOGS);
-  const [predictions, setPredictions] = useState<any[]>(DEFAULT_PREDICTIONS);
+  const [logs, setLogs] = useState<FootprintLog[]>(DEFAULT_LOGS);
+  const [predictions, setPredictions] = useState<PredictionPoint[]>(DEFAULT_PREDICTIONS);
   const [loading, setLoading] = useState(true);
   
   // Form State

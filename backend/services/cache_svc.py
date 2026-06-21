@@ -1,14 +1,32 @@
+"""
+In-Memory Cache Service — Token-Efficient Response Caching for Carbon AI Features.
+
+Provides a lightweight, thread-safe TTL cache to avoid redundant calls to the
+Google Gemini API, reducing token consumption and API costs for the EcoPilot
+sustainability platform. Frequently repeated carbon assessment prompts, room
+audit responses, and chat completions are cached to improve response latency.
+"""
 import time
 import threading
 from typing import Any, Optional
+
+# Named TTL constants (seconds)
+_DEFAULT_CACHE_TTL_SECONDS: int = 600      # 10 minutes — general cache default
+_ASSESSMENT_CACHE_TTL_SECONDS: int = 600   # 10 minutes — sustainability assessment results
 
 
 class InMemoryCache:
     """
     Lightweight, thread-safe in-memory cache with Time-To-Live (TTL) support.
-    Useful for caching expensive API responses like Google Gemini.
+
+    Used across the EcoPilot platform to cache expensive AI responses:
+      - Sustainability habit assessments from Gemini
+      - Carbon twin simulation results
+      - Chat history summaries for token optimization
+
+    Thread safety is guaranteed via a threading.Lock for concurrent FastAPI workers.
     """
-    def __init__(self, default_ttl: int = 600):
+    def __init__(self, default_ttl: int = _DEFAULT_CACHE_TTL_SECONDS):
         self._cache = {}
         self._default_ttl = default_ttl
         self._lock = threading.Lock()
@@ -44,4 +62,4 @@ class InMemoryCache:
 
 
 # Global instance for caching sustainability assessments
-assessment_cache = InMemoryCache(default_ttl=600)
+assessment_cache = InMemoryCache(default_ttl=_ASSESSMENT_CACHE_TTL_SECONDS)

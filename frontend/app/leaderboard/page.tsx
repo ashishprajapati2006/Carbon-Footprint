@@ -5,9 +5,26 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Award, Trophy, Users, ShieldCheck, ChevronUp, Globe, Calendar, Zap } from "lucide-react";
 import { getBackendUrl, apiFetch } from "@/services/api";
 
+/** A single leaderboard ranking entry returned by the API or mock data. */
+interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  level: string;
+  points: number;
+  isMe?: boolean;
+  user_id?: string;
+}
+
+/**
+ * Leaderboard page — Sustainability Rankings & Community Competition.
+ *
+ * Displays global, monthly, and weekly carbon reduction leaderboards.
+ * Gamification drives ongoing engagement with the platform's carbon
+ * reduction mission by rewarding consistent eco-friendly habits.
+ */
 export default function Leaderboard() {
   const [activeTab, setActiveTab] = useState("global");
-  const [rankings, setRankings] = useState<any[]>([]);
+  const [rankings, setRankings] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const mockWeeklyRankings = [
@@ -68,32 +85,41 @@ export default function Leaderboard() {
       </div>
 
       {/* Filter tab buttons */}
-      <div className="flex border-b border-border text-xs font-semibold">
+      <div role="tablist" aria-label="Leaderboard period filter" className="flex border-b border-border text-xs font-semibold">
         <button 
+          role="tab"
+          aria-selected={activeTab === "global"}
+          aria-controls="leaderboard-table"
           onClick={() => setActiveTab("global")}
           className={`pb-3 px-6 flex items-center gap-1.5 border-b-2 transition-all cursor-pointer ${
             activeTab === "global" ? "border-primary text-primary" : "border-transparent text-slate-500 hover:text-foreground"
           }`}
         >
-          <Globe className="w-4 h-4" />
+          <Globe className="w-4 h-4" aria-hidden="true" />
           Global Standings
         </button>
         <button 
+          role="tab"
+          aria-selected={activeTab === "monthly"}
+          aria-controls="leaderboard-table"
           onClick={() => setActiveTab("monthly")}
           className={`pb-3 px-6 flex items-center gap-1.5 border-b-2 transition-all cursor-pointer ${
             activeTab === "monthly" ? "border-primary text-primary" : "border-transparent text-slate-500 hover:text-foreground"
           }`}
         >
-          <Calendar className="w-4 h-4" />
+          <Calendar className="w-4 h-4" aria-hidden="true" />
           Monthly Standings
         </button>
         <button 
+          role="tab"
+          aria-selected={activeTab === "weekly"}
+          aria-controls="leaderboard-table"
           onClick={() => setActiveTab("weekly")}
           className={`pb-3 px-6 flex items-center gap-1.5 border-b-2 transition-all cursor-pointer ${
             activeTab === "weekly" ? "border-primary text-primary" : "border-transparent text-slate-500 hover:text-foreground"
           }`}
         >
-          <Zap className="w-4 h-4" />
+          <Zap className="w-4 h-4" aria-hidden="true" />
           Weekly Standings
         </button>
       </div>
@@ -141,13 +167,13 @@ export default function Leaderboard() {
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-500">Retrieving standings...</div>
           ) : (
-            <table className="w-full text-left border-collapse text-xs">
+            <table id="leaderboard-table" className="w-full text-left border-collapse text-xs" aria-label="Sustainability leaderboard rankings">
               <thead>
                 <tr className="border-b border-border bg-slate-950/20 text-slate-400 font-bold">
-                  <th className="p-4 w-16 text-center">Rank</th>
-                  <th className="p-4">Name</th>
-                  <th className="p-4">Standing Level</th>
-                  <th className="p-4 text-right">Points / Period</th>
+                  <th scope="col" className="p-4 w-16 text-center">Rank</th>
+                  <th scope="col" className="p-4">Name</th>
+                  <th scope="col" className="p-4">Standing Level</th>
+                  <th scope="col" className="p-4 text-right">Points / Period</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">

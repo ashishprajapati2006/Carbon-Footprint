@@ -175,3 +175,31 @@ input:focus, select:focus {
     background: transparent !important;
   }
 }
+
+/* ── Accessibility Utilities ─────────────────────────────────────────────────
+   Screen-reader-only class for skip-to-content links and hidden labels.
+   The skip link becomes visible on keyboard focus for sighted keyboard users.
+   ─────────────────────────────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.sr-only:focus,
+.focus\:not-sr-only:focus {
+  position: absolute;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 1rem;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}

@@ -5,12 +5,27 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Compass, Sparkles, CheckSquare, RefreshCw, Leaf, ArrowRight, Zap, Car } from "lucide-react";
 import { getBackendUrl, apiFetch } from "@/services/api";
 
+/** Result returned by the carbon lifestyle simulation endpoint. */
+interface SimulationResult {
+  original_co2_kg: number;
+  projected_co2_kg: number;
+  potential_saving_percentage: number;
+  recommendations: string[];
+}
+
+/**
+ * Carbon Lifestyle Simulator page — Scenario-Based CO2 Reduction Planning.
+ *
+ * Allows users to model how lifestyle changes (EV adoption, diet shift, solar
+ * installation) would reduce their personal carbon footprint. Powered by
+ * real EPA/IPCC emission factors for realistic projections.
+ */
 export default function Simulator() {
   const [vehicle, setVehicle] = useState("petrol");
   const [diet, setDiet] = useState("omnivore");
   const [solar, setSolar] = useState(false);
   const [simulating, setSimulating] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<SimulationResult | null>(null);
 
   const backendUrl = getBackendUrl("/footprint/simulate");
 

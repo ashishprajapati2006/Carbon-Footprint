@@ -1,3 +1,18 @@
+"""
+Report Controller — Automated Carbon Sustainability Report Generation.
+
+Generates comprehensive sustainability reports for EcoPilot users:
+  - Aggregates carbon footprint history from MongoDB into monthly/annual summaries
+  - Computes carbon trend analysis (improving / worsening / stable)
+  - Produces AI-generated sustainability narrative via Google Gemini
+  - Renders downloadable PDF reports with embedded carbon charts
+  - Supports email delivery of sustainability reports (SMTP integration)
+
+Aligned with SDG 13 (Climate Action): provides data-driven insights to help
+users quantify and reduce their carbon impact over time.
+"""
+from __future__ import annotations
+
 import logging
 from datetime import datetime
 from typing import Any
@@ -10,6 +25,7 @@ from services.pdf_svc import PDFService
 from repositories.report import ReportRepository
 
 logger = logging.getLogger("ecopilot.report_controller")
+
 
 class ReportController:
     @staticmethod
