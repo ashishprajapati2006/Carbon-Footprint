@@ -212,16 +212,14 @@ class DatabaseManager:
             return cls.db
 
         try:
-            logger.info("Verifying MongoDB connection with Sync client...")
-            from pymongo import MongoClient
-            sync_client = MongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=1000)
-            sync_client.admin.command('ping')
-            sync_client.close()
-
             logger.info("Initializing MongoDB Async Client...")
-            cls.client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=2000)
+            cls.client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
             # Fetch database name from connection string or default
             db_name = settings.mongodb_uri.split("/")[-1].split("?")[0] or "ecopilot"
+            if db_name.endswith("/"):
+                db_name = db_name[:-1]
+            if not db_name:
+                db_name = "ecopilot"
             cls.db = cls.client[db_name]
             return cls.db
         except Exception as e:
@@ -275,7 +273,11 @@ async def init_db_indexes(db):
         # 10. Carbon Twin Simulations Indexes
         await db["carbon_twin_simulations"].create_index([("user_id", pymongo.ASCENDING), ("simulated_at", pymongo.DESCENDING)])
         
+        # 11. API Cache Indexes
+        await db["api_cache"].create_index([("key", pymongo.ASCENDING)], unique=True)
+        
         logger.info("Database indexes created successfully.")
     except Exception as e:
         logger.error(f"Error creating database indexes: {e}")
+
 

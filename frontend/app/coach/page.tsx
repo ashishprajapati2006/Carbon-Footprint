@@ -34,6 +34,35 @@ interface ChatMessage {
  * carbon footprint across energy, transport, diet, and waste dimensions.
  * Session history is persisted to MongoDB for longitudinal coaching context.
  */
+const getMockReply = (query: string): string => {
+  const q = query.toLowerCase();
+  if (["transport", "car", "travel", "commut", "bus", "train", "vehicl", "bike", "cycle"].some(w => q.includes(w))) {
+    return "🚗➡️⚡ Swapping single-occupancy petrol commuting for public transport or electric vehicles reduces transit carbon footprints by approximately **75%**. Biking or walking for trips under **3 km** makes a huge difference!";
+  }
+  if (["diet", "food", "meat", "vegetar", "vegan", "grocer", "plant-based", "eat"].some(w => q.includes(w))) {
+    return "🥗 Transitioning to a plant-based (vegan/vegetarian) diet offsets carbon footprints by **2-4 kg CO2 daily**. Consider starting with *Meatless Mondays*:\n\n1. **Swap beef for beans** in tacos.\n2. **Use almond or oat milk** instead of dairy.\n3. **Buy seasonal local foods** to lower transport loads.";
+  }
+  if (["bill", "elect", "power", "energ", "kwh", "solar", "light", "heat"].some(w => q.includes(w))) {
+    return "💡 You can reduce residential electricity draw by:\n\n- Swapping lights for **9W LEDs**.\n- Adjusting thermostat settings by **1-2 degrees**.\n- Unplugging standby power draws when idle.";
+  }
+  if (["water", "shower", "leak", "tap", "drip", "wash"].some(w => q.includes(w))) {
+    return "💧 Heating water accounts for ~18% of home energy use. Take shorter showers, fix leaky taps (a drip wastes 9 litres/day), and wash clothes in cold water.";
+  }
+  if (["waste", "recycl", "compost", "trash", "landfill", "bin"].some(w => q.includes(w))) {
+    return "♻️ Composting organic waste and sorting recyclables can divert 60–70% of household waste from landfill. Landfill methane is 28× more potent than CO₂, so every bag you compost makes a real difference.";
+  }
+  if (["twin", "simulat", "lifestyle", "improvement", "offset", "predict"].some(w => q.includes(w))) {
+    return "🤖👥 Carbon Twin Simulation: By modeling green lifestyle changes—such as adopting a plant-based diet, commuting via EV/bike, or switching to solar power—you can simulate slashing your personal CO₂ footprint by up to 60%! Try adjusting simulation parameters in the 'Carbon Twin' tab to see detailed forecasts.";
+  }
+  if (["footprint", "co2", "emiss", "greenhouse", "sdg"].some(w => q.includes(w))) {
+    return "📊 Your Carbon Footprint represents the total greenhouse gas emissions caused directly and indirectly by your daily activities. To lower it, audit your transport patterns, reduce meat intake, compost household waste, and manage home electricity draws.";
+  }
+  if (["challenge", "quest", "leaderboard", "points", "badge"].some(w => q.includes(w))) {
+    return "🏆 EcoPilot Gamification: Compete on our Leaderboard by completing green quests! Go to the 'Challenges' tab to accept quests like 'Zero Waste Week' or 'Eco-Commute Day', and earn XP and badges for reducing your footprint.";
+  }
+  return "🌱 Hi! I'm EcoPilot, your AI Sustainability Coach. I can help you analyse your carbon footprint, give tips to reduce home energy use, audit room appliances from photos, and simulate lifestyle improvements. Ask me anything about going green!";
+};
+
 export default function CoachChat() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
@@ -190,19 +219,7 @@ export default function CoachChat() {
 
     // ── Mock session: reply locally without hitting the backend ─────────
     if (sessId.startsWith("mock-")) {
-      const query = userText.toLowerCase();
-      let reply = "I can guide you on solar panels installation, food carbon offsets, or transport swaps. Try adjusting parameters on the Simulator!";
-      if (["transport", "car", "travel", "commut", "bus", "train", "vehicl", "bike", "cycle"].some(w => query.includes(w))) {
-        reply = "Swapping single-occupancy petrol commuting for public transport or electric vehicles reduces transit carbon footprints by approximately **75%**. Biking or walking for trips under **3 km** makes a huge difference!";
-      } else if (["diet", "food", "meat", "vegetar", "vegan", "grocer", "plant-based", "eat"].some(w => query.includes(w))) {
-        reply = "Transitioning to a plant-based (vegan/vegetarian) diet offsets carbon footprints by **2-4 kg CO2 daily**. Consider starting with *Meatless Mondays*:\n\n1. **Swap beef for beans** in tacos.\n2. **Use almond or oat milk** instead of dairy.\n3. **Buy seasonal local foods** to lower transport loads.";
-      } else if (["bill", "elect", "power", "energ", "kwh", "solar", "light", "heat"].some(w => query.includes(w))) {
-        reply = "You can reduce residential electricity draw by:\n\n- Swapping lights for **9W LEDs**.\n- Adjusting thermostat settings by **1-2 degrees**.\n- Unplugging standby power draws when idle.";
-      } else if (["water", "shower", "leak", "tap", "drip", "wash"].some(w => query.includes(w))) {
-        reply = "💧 Heating water accounts for ~18% of home energy use. Take shorter showers, fix leaky taps (a drip wastes 9 litres/day), and wash clothes in cold water.";
-      } else if (["waste", "recycl", "compost", "trash", "landfill", "bin"].some(w => query.includes(w))) {
-        reply = "♻️ Composting organic waste and sorting recyclables can divert 60–70% of household waste from landfill. Landfill methane is 28× more potent than CO₂, so every bag you compost makes a real difference.";
-      }
+      const reply = getMockReply(userText);
 
       // Simulate streaming word-by-word
       setMessages(prev => [...prev, { role: "assistant", content: "", timestamp: new Date().toISOString() }]);
@@ -279,16 +296,7 @@ export default function CoachChat() {
       fetchSessions();
     } catch (err) {
       // Backend offline fallback simulation
-      const query = userText.toLowerCase();
-      let reply = "I can guide you on solar panels installation, food carbon offsets, or transport swaps. Try adjusting parameters on the Simulator!";
-      
-      if (["transport", "car", "travel", "commut", "bus", "train", "vehicl", "bike", "cycle"].some(w => query.includes(w))) {
-        reply = "Swapping single-occupancy petrol commuting for public transport or electric vehicles reduces transit carbon footprints by approximately **75%**. Biking or walking for trips under **3 km** makes a huge difference!";
-      } else if (["diet", "food", "meat", "vegetar", "vegan", "grocer", "plant-based", "eat"].some(w => query.includes(w))) {
-        reply = "Transitioning to a plant-based (vegan/vegetarian) diet offsets carbon footprints by **2-4 kg CO2 daily**. Consider starting with *Meatless Mondays*:\n\n1. **Swap beef for beans** in tacos.\n2. **Use almond or oat milk** instead of dairy.\n3. **Buy seasonal local foods** to lower transport loads.";
-      } else if (["bill", "elect", "power", "energ", "kwh", "solar", "light", "heat"].some(w => query.includes(w))) {
-        reply = "You can reduce residential electricity draw by:\n\n- Swapping lights for **9W LEDs**.\n- Adjusting thermostat settings by **1-2 degrees**.\n- Unplugging standby power draws when idle.";
-      }
+      const reply = getMockReply(userText);
 
       const mockAssistantMsg: ChatMessage = {
         role: "assistant",

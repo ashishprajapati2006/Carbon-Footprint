@@ -13,7 +13,18 @@ from middleware.security_headers import SecurityHeadersMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db = await get_db()
-    await init_db_indexes(db)
+    if not hasattr(db, "_collections"):
+        try:
+            logging.info("Verifying MongoDB connection asynchronously during startup...")
+            await db.command("ping")
+            logging.info("MongoDB connection verified successfully.")
+            await init_db_indexes(db)
+        except Exception as e:
+            logging.error(f"MongoDB connection check failed: {e}. Falling back to Mock DB.")
+            from core.database import DatabaseManager, MockDatabase
+            DatabaseManager.db = MockDatabase()
+    else:
+        await init_db_indexes(db)
     yield
 
 # Configure logs

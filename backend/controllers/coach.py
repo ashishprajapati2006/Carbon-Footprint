@@ -45,6 +45,19 @@ class CoachController:
             logger.info("Serving cached habits assessment.")
             return cached_result, 0, 0, time.perf_counter() - start_time
             
+        from repositories.cache import CacheRepository
+        cache_repo = CacheRepository()
+        try:
+            cached_db = await cache_repo.get_cache(cache_key)
+            if cached_db:
+                logger.info("Serving MongoDB cached habits assessment.")
+                if isinstance(cached_db, str):
+                    cached_db = json.loads(cached_db)
+                assessment_cache.set(cache_key, cached_db)
+                return cached_db, 0, 0, time.perf_counter() - start_time
+        except Exception as e:
+            logger.warning(f"Failed to check MongoDB assessment cache: {e}")
+
         logger.info("Requesting new habits analysis from Gemini.")
         gemini = GeminiAIService()
         try:
@@ -59,6 +72,10 @@ class CoachController:
             prompt_tokens = (len(log_data.travel) + len(log_data.food) + len(log_data.electricity) + len(log_data.waste) + len(log_data.water)) // 4
             completion_tokens = len(json.dumps(assessment_json)) // 4
             assessment_cache.set(cache_key, assessment_json)
+            try:
+                await cache_repo.set_cache(cache_key, json.dumps(assessment_json), ttl_seconds=600)
+            except Exception as e:
+                logger.warning(f"Failed to save assessment to MongoDB cache: {e}")
             return assessment_json, prompt_tokens, completion_tokens, response_time
         except Exception as e:
             raise HTTPException(

@@ -9,6 +9,7 @@ RandomForestRegressor and XGBoostRegressor, and saves the best model.
 import os
 import pickle
 import logging
+from typing import Any
 import numpy as np
 import pandas as pd
 from datasets import load_dataset
@@ -137,93 +138,64 @@ def build_preprocessing_pipeline() -> ColumnTransformer:
     return preprocessor
 
 
+def _init_models() -> dict:
+    """Initializes regressor models dict."""
+    return {
+        'RandomForestRegressor': RandomForestRegressor(
+            n_estimators=100, max_depth=15, random_state=42, n_jobs=-1
+        ),
+        'XGBoostRegressor': XGBRegressor(
+            n_estimators=100, learning_rate=0.08, max_depth=6, random_state=42, n_jobs=-1
+        )
+    }
+
+
+def _train_single_model(name: str, regressor: Any, preprocessor: ColumnTransformer,
+                       X_train: pd.DataFrame, y_train: pd.Series) -> Pipeline:
+    """Creates and fits a scikit-learn Pipeline for a single estimator."""
+    logger.info(f"Training {name}...")
+    pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('regressor', regressor)
+    ])
+    pipeline.fit(X_train, y_train)
+    return pipeline
+
+
+def _evaluate_single_model(pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> dict:
+    """Predicts test data and evaluates standard regression metrics."""
+    y_pred = pipeline.predict(X_test)
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    r2 = r2_score(y_test, y_pred)
+    return {
+        'mae': float(mae),
+        'rmse': float(rmse),
+        'r2': float(r2)
+    }
+
+
 def train_and_evaluate(X_train: pd.DataFrame, X_test: pd.DataFrame, 
                        y_train: pd.Series, y_test: pd.Series, 
                        preprocessor: ColumnTransformer) -> dict:
     """Trains RandomForestRegressor and XGBoostRegressor models and evaluates them."""
     logger.info("Starting model training and evaluation...")
-    
-    models = {
-        'RandomForestRegressor': RandomForestRegressor(
-            n_estimators=100,
-            max_depth=15,
-            random_state=42,
-            n_jobs=-1
-        ),
-        'XGBoostRegressor': XGBRegressor(
-            n_estimators=100,
-            learning_rate=0.08,
-            max_depth=6,
-            random_state=42,
-            n_jobs=-1
-        )
-    }
-    
+    models = _init_models()
     trained_pipelines = {}
     evaluation_results = {}
     
     for name, regressor in models.items():
-        logger.info(f"Training {name}...")
-        
-        # Create final pipeline
-        pipeline = Pipeline(steps=[
-            ('preprocessor', preprocessor),
-            ('regressor', regressor)
-        ])
-        
-        # Fit pipeline
-        pipeline.fit(X_train, y_train)
+        pipeline = _train_single_model(name, regressor, preprocessor, X_train, y_train)
         trained_pipelines[name] = pipeline
-        
-        # Predict & Evaluate
-        y_pred = pipeline.predict(X_test)
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-        r2 = r2_score(y_test, y_pred)
-        
-        evaluation_results[name] = {
-            'mae': float(mae),
-            'rmse': float(rmse),
-            'r2': float(r2)
-        }
-        
-        logger.info(f"{name} Evaluation -> MAE: {mae:.2f}, RMSE: {rmse:.2f}, R2: {r2:.4f}")
+        results = _evaluate_single_model(pipeline, X_test, y_test)
+        evaluation_results[name] = results
+        logger.info(f"{name} Evaluation -> MAE: {results['mae']:.2f}, RMSE: {results['rmse']:.2f}, R2: {results['r2']:.4f}")
         
     return trained_pipelines, evaluation_results
 
 
-def main():
-    logger.info("Starting training pipeline execution...")
-    
-    # 1 & 2. Download automatically and cache locally
-    df = download_and_cache_dataset(DATASET_NAME, CACHE_DIR)
-    
-    # 3. Validate schema
-    validate_schema(df)
-    
-    # 4. Clean data
-    df_clean = clean_data(df)
-    
-    # Separate features and target
-    X = df_clean[CATEGORICAL_FEATURES + NUMERICAL_FEATURES]
-    y = df_clean[TARGET]
-    
-    # 5. Split train/test (80/20)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    logger.info(f"Train size: {X_train.shape}, Test size: {X_test.shape}")
-    
-    # Build preprocessor (encodes categorical columns under the hood)
-    preprocessor = build_preprocessing_pipeline()
-    
-    # 6. Train model(s)
-    pipelines, results = train_and_evaluate(X_train, X_test, y_train, y_test, preprocessor)
-    
-    # Select the best model based on R2 score
-    best_model_name = max(results, key=lambda k: results[k]['r2'])
-    best_pipeline = pipelines[best_model_name]
-    logger.info(f"Selected Best Model: {best_model_name} with R2 = {results[best_model_name]['r2']:.4f}")
-    
-    # 7. Save model
+def _save_model_data(best_pipeline: Pipeline, best_model_name: str, results: dict) -> None:
+    """Saves best model pipeline and training metadata to pickle file."""
     os.makedirs(MODEL_DIR, exist_ok=True)
     logger.info(f"Saving best model and pipeline to '{MODEL_PATH}'...")
     
@@ -237,10 +209,29 @@ def main():
             'target': TARGET
         }
     }
-    
     with open(MODEL_PATH, 'wb') as f:
         pickle.dump(model_data, f)
-        
+
+
+def main():
+    logger.info("Starting training pipeline execution...")
+    df = download_and_cache_dataset(DATASET_NAME, CACHE_DIR)
+    validate_schema(df)
+    df_clean = clean_data(df)
+    
+    X = df_clean[CATEGORICAL_FEATURES + NUMERICAL_FEATURES]
+    y = df_clean[TARGET]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    logger.info(f"Train size: {X_train.shape}, Test size: {X_test.shape}")
+    
+    preprocessor = build_preprocessing_pipeline()
+    pipelines, results = train_and_evaluate(X_train, X_test, y_train, y_test, preprocessor)
+    
+    best_model_name = max(results, key=lambda k: results[k]['r2'])
+    best_pipeline = pipelines[best_model_name]
+    logger.info(f"Selected Best Model: {best_model_name} with R2 = {results[best_model_name]['r2']:.4f}")
+    
+    _save_model_data(best_pipeline, best_model_name, results)
     logger.info("Model saved successfully. Pipeline execution complete.")
 
 

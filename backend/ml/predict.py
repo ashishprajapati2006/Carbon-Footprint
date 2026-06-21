@@ -110,10 +110,76 @@ def parse_cli_args():
     return parser.parse_args()
 
 
+def _prepare_df_from_json(input_json: str) -> pd.DataFrame:
+    """Parses JSON string input and returns DataFrame."""
+    try:
+        parsed = json.loads(input_json)
+        if isinstance(parsed, dict):
+            return pd.DataFrame([parsed])
+        elif isinstance(parsed, list):
+            return pd.DataFrame(parsed)
+        raise ValueError("JSON must be an object or an array of objects.")
+    except Exception as e:
+        print(json.dumps({"error": f"Failed to parse --input-json: {str(e)}"}), file=sys.stderr)
+        sys.exit(1)
+
+
+def _prepare_df_from_file(input_file: str) -> pd.DataFrame:
+    """Reads input file (CSV or JSON) and returns DataFrame."""
+    try:
+        if input_file.endswith('.csv'):
+            return pd.read_csv(input_file)
+        if input_file.endswith('.json'):
+            return pd.read_json(input_file)
+        try:
+            return pd.read_json(input_file)
+        except ValueError:
+            return pd.read_csv(input_file)
+    except Exception as e:
+        print(json.dumps({"error": f"Failed to read file '{input_file}': {str(e)}"}), file=sys.stderr)
+        sys.exit(1)
+
+
+def _prepare_df_from_cli(args: Any) -> pd.DataFrame:
+    """Builds input DataFrame from individual direct CLI arguments."""
+    cli_inputs = {}
+    has_input = False
+    for feat in CATEGORICAL_FEATURES + NUMERICAL_FEATURES:
+        attr_name = feat.lower().replace(" ", "_").replace("-", "_")
+        val = getattr(args, attr_name, None)
+        if val is not None:
+            has_input = True
+            cli_inputs[feat] = val
+            
+    if has_input:
+        return pd.DataFrame([cli_inputs])
+    print(json.dumps({
+        "error": "No input provided. Use --input-json, --input-file, or individual feature flags (e.g. --sex male)."
+    }), file=sys.stderr)
+    sys.exit(1)
+
+
+def _print_predictions(preds: list, input_df: pd.DataFrame, model_name: str) -> None:
+    """Formats and prints predictions list to stdout in JSON format."""
+    results = []
+    for idx, pred in enumerate(preds):
+        res = {
+            "prediction_index": idx,
+            "predicted_carbon_emission_co2_kg": round(pred, 2)
+        }
+        if len(input_df) == 1:
+            res["input_features"] = input_df.iloc[idx].replace({np.nan: None}).to_dict()
+        results.append(res)
+        
+    output = {
+        "model_used": model_name,
+        "predictions": results
+    }
+    print(json.dumps(output, indent=2))
+
+
 def main():
     args = parse_cli_args()
-    
-    # Load model
     try:
         model_data = load_model(args.model_path)
         pipeline = model_data['pipeline']
@@ -122,84 +188,16 @@ def main():
         print(json.dumps({"error": f"Failed to load model: {str(e)}"}), file=sys.stderr)
         sys.exit(1)
         
-    # Prepare input DataFrame
-    input_df = None
-    
     if args.input_json:
-        # Load from JSON string
-        try:
-            parsed_json = json.loads(args.input_json)
-            if isinstance(parsed_json, dict):
-                input_df = pd.DataFrame([parsed_json])
-            elif isinstance(parsed_json, list):
-                input_df = pd.DataFrame(parsed_json)
-            else:
-                raise ValueError("JSON must be an object or an array of objects.")
-        except Exception as e:
-            print(json.dumps({"error": f"Failed to parse --input-json: {str(e)}"}), file=sys.stderr)
-            sys.exit(1)
-            
+        input_df = _prepare_df_from_json(args.input_json)
     elif args.input_file:
-        # Load from CSV or JSON file
-        try:
-            if args.input_file.endswith('.csv'):
-                input_df = pd.read_csv(args.input_file)
-            elif args.input_file.endswith('.json'):
-                input_df = pd.read_json(args.input_file)
-            else:
-                # Try JSON first, fallback to CSV
-                try:
-                    input_df = pd.read_json(args.input_file)
-                except ValueError:
-                    input_df = pd.read_csv(args.input_file)
-        except Exception as e:
-            print(json.dumps({"error": f"Failed to read file '{args.input_file}': {str(e)}"}), file=sys.stderr)
-            sys.exit(1)
-            
+        input_df = _prepare_df_from_file(args.input_file)
     else:
-        # Load from direct individual feature flags
-        cli_inputs = {}
-        has_input = False
+        input_df = _prepare_df_from_cli(args)
         
-        for feat in CATEGORICAL_FEATURES + NUMERICAL_FEATURES:
-            attr_name = feat.lower().replace(" ", "_").replace("-", "_")
-            cli_val = getattr(args, attr_name, None)
-            if cli_val is not None:
-                has_input = True
-                cli_inputs[feat] = cli_val
-                
-        if has_input:
-            input_df = pd.DataFrame([cli_inputs])
-        else:
-            print(json.dumps({
-                "error": "No input provided. Use --input-json, --input-file, or individual feature flags (e.g. --sex male). Use --help for options."
-            }), file=sys.stderr)
-            sys.exit(1)
-            
-    # Perform prediction
     try:
         preds = predict(pipeline, input_df)
-        
-        # Prepare output response
-        results = []
-        for idx, pred in enumerate(preds):
-            res = {
-                "prediction_index": idx,
-                "predicted_carbon_emission_co2_kg": round(pred, 2)
-            }
-            # Add features to output if only predicting one row for convenience
-            if len(input_df) == 1:
-                res["input_features"] = input_df.iloc[idx].replace({np.nan: None}).to_dict()
-                
-            results.append(res)
-            
-        # Write to stdout as clean JSON
-        output = {
-            "model_used": model_name,
-            "predictions": results
-        }
-        print(json.dumps(output, indent=2))
-        
+        _print_predictions(preds, input_df, model_name)
     except Exception as e:
         print(json.dumps({"error": f"Prediction failed: {str(e)}"}), file=sys.stderr)
         sys.exit(1)

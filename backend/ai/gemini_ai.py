@@ -59,6 +59,8 @@ class GeminiAIService:
             or len(self.api_key) < 15
         )
         self._client = None
+        from repositories.cache import CacheRepository
+        self.cache_repo = CacheRepository()
         if not self.is_mock:
             try:
                 from google import genai  # type: ignore
@@ -94,11 +96,37 @@ class GeminiAIService:
         reply = self._check_energy_water_waste_mock_keywords(msg)
         if reply:
             return reply
+        reply = self._check_simulation_footprint_mock_keywords(msg)
+        if reply:
+            return reply
         return (
             "🌱 Hi! I'm EcoPilot, your AI Sustainability Coach. I can help you analyse your "
             "carbon footprint, give tips to reduce home energy use, audit room appliances from photos, "
             "and simulate lifestyle improvements. Ask me anything about going green!"
         )
+
+    def _check_simulation_footprint_mock_keywords(self, msg: str) -> Optional[str]:
+        """Matches twin, simulation, and general footprint queries."""
+        if any(w in msg for w in ("twin", "simulat", "lifestyle", "improvement", "offset", "predict")):
+            return (
+                "🤖👥 Carbon Twin Simulation: By modeling green lifestyle changes—such as adopting a "
+                "plant-based diet, commuting via EV/bike, or switching to solar power—you can simulate "
+                "slashing your personal CO₂ footprint by up to 60%! Try adjusting simulation parameters "
+                "in the 'Carbon Twin' tab to see detailed forecasts."
+            )
+        if any(w in msg for w in ("footprint", "co2", "emiss", "greenhouse", "sdg")):
+            return (
+                "📊 Your Carbon Footprint represents the total greenhouse gas emissions caused directly "
+                "and indirectly by your daily activities. To lower it, audit your transport patterns, "
+                "reduce meat intake, compost household waste, and manage home electricity draws."
+            )
+        if any(w in msg for w in ("challenge", "quest", "leaderboard", "points", "badge")):
+            return (
+                "🏆 EcoPilot Gamification: Compete on our Leaderboard by completing green quests! "
+                "Go to the 'Challenges' tab to accept quests like 'Zero Waste Week' or 'Eco-Commute Day', "
+                "and earn XP and badges for reducing your footprint."
+            )
+        return None
 
     def _check_transport_diet_mock_keywords(self, msg: str) -> Optional[str]:
         """Matches transport and diet related keywords for mock coaching replies."""
@@ -162,16 +190,37 @@ class GeminiAIService:
             logger.error(f"Error generating history summary: {exc}")
             return "The user and EcoPilot previously discussed sustainability habits."
 
+    async def _check_caches(self, cache_key: str) -> Optional[str]:
+        """Tries in-memory local cache first, then MongoDB persistent cache."""
+        val = chat_response_cache.get(cache_key)
+        if val:
+            logger.info("Serving cached chat response.")
+            return val
+        try:
+            cached_db = await self.cache_repo.get_cache(cache_key)
+            if cached_db:
+                logger.info("Serving MongoDB cached chat response.")
+                chat_response_cache.set(cache_key, cached_db)
+                return cached_db
+        except Exception as e:
+            logger.warning(f"Failed to check MongoDB cache: {e}")
+        return None
+
+    async def _mock_stream(self, text: str, delay: float = 0.03) -> AsyncGenerator[str, None]:
+        """Streams a given text block split by spaces with a small simulated delay."""
+        for chunk in text.split(" "):
+            yield chunk + " "
+            await asyncio.sleep(delay)
+
     async def generate_chat_response(
         self, chat_history: list, new_message: str, history_summary: Optional[str] = None
     ) -> str:
         """Generates a single conversational response with caching and context window trimming."""
         chat_history = chat_history[-10:]
         cache_key = _get_chat_cache_key(chat_history, new_message)
-        cached_reply = chat_response_cache.get(cache_key)
-        if cached_reply:
-            logger.info("Serving cached chat response.")
-            return cached_reply
+        cached = await self._check_caches(cache_key)
+        if cached:
+            return cached
 
         if self.is_mock:
             reply = self._generate_mock_reply(new_message)
@@ -181,6 +230,7 @@ class GeminiAIService:
         try:
             reply = await self._prepare_and_run_chat_call(chat_history, new_message, history_summary)
             chat_response_cache.set(cache_key, reply)
+            await self.cache_repo.set_cache(cache_key, reply, ttl_seconds=300)
             return reply
         except Exception as exc:
             logger.error(f"Gemini chat error: {exc}")
@@ -221,20 +271,17 @@ class GeminiAIService:
         """Streams conversational responses with caching and context window trimming."""
         chat_history = chat_history[-10:]
         cache_key = _get_chat_cache_key(chat_history, new_message)
-        cached_reply = chat_response_cache.get(cache_key)
-        if cached_reply:
-            logger.info("Serving cached streamed response.")
-            for chunk in cached_reply.split(" "):
-                yield chunk + " "
-                await asyncio.sleep(0.02)
+        cached = await self._check_caches(cache_key)
+        if cached:
+            async for chunk in self._mock_stream(cached, delay=0.01):
+                yield chunk
             return
 
         if self.is_mock:
             reply = self._generate_mock_reply(new_message)
             chat_response_cache.set(cache_key, reply)
-            for chunk in reply.split(" "):
-                yield chunk + " "
-                await asyncio.sleep(0.05)
+            async for chunk in self._mock_stream(reply, delay=0.03):
+                yield chunk
             return
 
         try:
@@ -245,9 +292,8 @@ class GeminiAIService:
             prefix = "⚠️ *[Gemini quota reached – offline mode]*\n\n" if _is_rate_limit(exc) else ""
             yield prefix
             reply = self._generate_mock_reply(new_message)
-            for chunk in reply.split(" "):
-                yield chunk + " "
-                await asyncio.sleep(0.04)
+            async for chunk in self._mock_stream(reply, delay=0.03):
+                yield chunk
 
     async def _run_chat_stream_call(self, chat_history: list, new_message: str, history_summary: Optional[str], cache_key: str) -> AsyncGenerator[str, None]:
         """Streams generation tokens from Gemini and saves the complete text into local cache."""
@@ -275,6 +321,10 @@ class GeminiAIService:
                 accumulated += chunk.text
                 yield chunk.text
         chat_response_cache.set(cache_key, accumulated)
+        try:
+            await self.cache_repo.set_cache(cache_key, accumulated, ttl_seconds=300)
+        except Exception as e:
+            logger.warning(f"Failed to save streamed response to MongoDB cache: {e}")
 
     async def analyze_multimodal(self, image_bytes: bytes, mime_type: str, prompt: str) -> str:
         """Sends an image to Gemini Vision and returns analysis text."""
