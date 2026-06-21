@@ -14,14 +14,14 @@ import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 interface ChatSession {
   _id: string;
   session_title: string;
-  created_at: string;
+  created_at?: string;
   updated_at?: string;
 }
 
 /** A single chat message in an active AI coaching conversation. */
 interface ChatMessage {
   role: "user" | "assistant";
-  message: string;
+  message?: string;
   content?: string;
   timestamp?: string;
 }
@@ -167,12 +167,12 @@ export default function CoachChat() {
     e.preventDefault();
     if (!inputValue.trim()) return;
 
-    let sessId = activeSession?._id;
+    let sessId: string = activeSession?._id || "";
     
     // Auto-create a session if none is active, then continue sending
     if (!sessId) {
       const newSess = await createNewSession();
-      if (!newSess?._id) return; // bail if creation failed
+      if (!newSess || !newSess._id) return; // bail if creation failed
       sessId = newSess._id;
     }
 
@@ -181,7 +181,7 @@ export default function CoachChat() {
     setStreaming(true);
 
     // Append user message immediately
-    const userMsg = {
+    const userMsg: ChatMessage = {
       role: "user",
       content: userText,
       timestamp: new Date().toISOString()
@@ -290,7 +290,7 @@ export default function CoachChat() {
         reply = "You can reduce residential electricity draw by:\n\n- Swapping lights for **9W LEDs**.\n- Adjusting thermostat settings by **1-2 degrees**.\n- Unplugging standby power draws when idle.";
       }
 
-      const mockAssistantMsg = {
+      const mockAssistantMsg: ChatMessage = {
         role: "assistant",
         content: reply,
         timestamp: new Date().toISOString()
@@ -482,7 +482,7 @@ export default function CoachChat() {
                           <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                         ) : (
                           <div className="space-y-1">
-                            <MarkdownRenderer content={msg.content} />
+                            <MarkdownRenderer content={msg.content || msg.message || ""} />
                           </div>
                         )}
                       </div>

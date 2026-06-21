@@ -10,6 +10,22 @@ from repositories.room import RoomRepository
 
 class RoomController:
     @staticmethod
+    def _build_scan_entry(audit_data: dict, room_type: str, filename: str, user_id: str) -> dict:
+        """Constructs the room scan MongoDB entry from audited vision data."""
+        return {
+            "user_id": ObjectId(user_id),
+            "image_url": filename,
+            "room_type": audit_data.get("room_type", room_type),
+            "detected_appliances": audit_data.get("detected_appliances", []),
+            "total_energy_waste_kwh": audit_data.get("total_energy_waste_kwh", 0.0),
+            "total_carbon_impact_kg": audit_data.get("total_carbon_impact_kg", 0.0),
+            "total_yearly_cost_usd": audit_data.get("total_yearly_cost_usd", 0.0),
+            "overall_room_eco_score": audit_data.get("overall_room_eco_score", 50),
+            "recommendations": audit_data.get("recommendations", []),
+            "analyzed_at": datetime.now(timezone.utc)
+        }
+
+    @staticmethod
     async def scan_room_image(file: UploadFile, room_type: str, db: Any, current_user: dict) -> dict:
         repo = RoomRepository(db)
         
@@ -36,19 +52,7 @@ class RoomController:
 
         try:
             audit_data = await vision_svc.audit_room_image(file_bytes, content_type, room_type)
-
-            scan_entry = {
-                "user_id": ObjectId(current_user["id"]),
-                "image_url": filename,
-                "room_type": audit_data.get("room_type", room_type),
-                "detected_appliances": audit_data.get("detected_appliances", []),
-                "total_energy_waste_kwh": audit_data.get("total_energy_waste_kwh", 0.0),
-                "total_carbon_impact_kg": audit_data.get("total_carbon_impact_kg", 0.0),
-                "total_yearly_cost_usd": audit_data.get("total_yearly_cost_usd", 0.0),
-                "overall_room_eco_score": audit_data.get("overall_room_eco_score", 50),
-                "recommendations": audit_data.get("recommendations", []),
-                "analyzed_at": datetime.now(timezone.utc)
-            }
+            scan_entry = RoomController._build_scan_entry(audit_data, room_type, filename, current_user["id"])
 
             inserted_id = await repo.log_room_analysis(scan_entry)
             scan_entry["_id"] = inserted_id

@@ -2,19 +2,15 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { Leaf, Mail, Lock, User, ArrowRight, ShieldAlert, Sparkles, LogIn } from "lucide-react";
+import { motion } from "framer-motion";
+import { Leaf } from "lucide-react";
 import { getBackendUrl } from "@/services/api";
+import { LoginForm } from "@/components/login/LoginForm";
+import { AuthFeedback } from "@/components/login/AuthFeedback";
 
 /**
  * Login & Registration page for EcoPilot AI.
- *
- * Provides unified authentication UI for new user registration and
- * returning user sign-in. On successful auth, stores JWT tokens and
- * redirects to the carbon dashboard. Password complexity is enforced
- * server-side and error messages are surfaced accessibly via role="alert".
  */
-
 export default function LoginPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
@@ -73,7 +69,6 @@ export default function LoginPage() {
         throw new Error(errorString);
       }
 
-      // Store tokens and metadata
       localStorage.setItem("token", data.access_token);
       if (data.refresh_token) {
         localStorage.setItem("refresh_token", data.refresh_token);
@@ -103,7 +98,6 @@ export default function LoginPage() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md glass-panel p-8 rounded-3xl border border-slate-800/80 shadow-2xl relative overflow-hidden"
       >
-        {/* Glow accents */}
         <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-12 -left-12 w-32 h-32 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
 
@@ -119,120 +113,21 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <AnimatePresence mode="popLayout">
-            {!isLogin && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-1.5"
-              >
-                <label htmlFor="fullName-input" className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Full Name</label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500">
-                    <User className="w-4 h-4" />
-                  </span>
-                  <input
-                    id="fullName-input"
-                    type="text"
-                    placeholder="Jane Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full bg-slate-950/70 border border-slate-800 focus:border-emerald-500/80 rounded-xl py-3 pl-10 pr-4 text-xs text-white focus:outline-none transition-colors"
-                  />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <AuthFeedback errorMsg={errorMsg} successMsg={successMsg} />
 
-          <div className="space-y-1.5">
-            <label htmlFor="email-input" className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Email Address</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500">
-                <Mail className="w-4 h-4" />
-              </span>
-              <input
-                id="email-input"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full bg-slate-950/70 border border-slate-800 focus:border-emerald-500/80 rounded-xl py-3 pl-10 pr-4 text-xs text-white focus:outline-none transition-colors"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="password-input" className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Password</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500">
-                <Lock className="w-4 h-4" />
-              </span>
-              <input
-                id="password-input"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                aria-describedby={!isLogin ? "password-hint" : undefined}
-                className="w-full bg-slate-950/70 border border-slate-800 focus:border-emerald-500/80 rounded-xl py-3 pl-10 pr-4 text-xs text-white focus:outline-none transition-colors"
-              />
-            </div>
-            {!isLogin && (
-              <p id="password-hint" className="text-[10px] text-slate-500 mt-1">
-                Must be 8+ characters with at least one uppercase letter, lowercase letter, and number.
-              </p>
-            )}
-          </div>
-
-          {/* Feedback Messages */}
-          <AnimatePresence>
-            {errorMsg && (
-              <motion.div 
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                role="alert"
-                aria-live="assertive"
-                className="p-3 bg-rose-950/30 border border-rose-500/30 text-rose-350 text-[11px] rounded-xl flex items-center gap-2"
-              >
-                <ShieldAlert className="w-4 h-4 shrink-0 text-rose-500" />
-                <span>{errorMsg}</span>
-              </motion.div>
-            )}
-
-            {successMsg && (
-              <motion.div 
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="p-3 bg-emerald-950/30 border border-emerald-500/30 text-emerald-350 text-[11px] rounded-xl flex items-center gap-2"
-              >
-                <Sparkles className="w-4 h-4 shrink-0 text-emerald-400 animate-pulse" />
-                <span>{successMsg}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-850 text-white py-3.5 px-4 rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-500/10 cursor-pointer flex items-center justify-center gap-2 mt-6"
-          >
-            {loading ? (
-              <div className="w-4 h-4 border-2 border-t-white border-r-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                <span>{isLogin ? "Authenticate Session" : "Create Eco Account"}</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
+        <div className="mt-4">
+          <LoginForm
+            isLogin={isLogin}
+            email={email}
+            setEmail={setEmail}
+            password={password}
+            setPassword={setPassword}
+            fullName={fullName}
+            setFullName={setFullName}
+            loading={loading}
+            onSubmit={handleSubmit}
+          />
+        </div>
 
         <div className="border-t border-slate-900 mt-6 pt-5 text-center">
           <button
@@ -241,7 +136,7 @@ export default function LoginPage() {
               setErrorMsg("");
               setSuccessMsg("");
             }}
-            className="text-xs text-slate-400 hover:text-emerald-450 transition-colors"
+            className="text-xs text-slate-400 hover:text-emerald-450 transition-colors cursor-pointer"
           >
             {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
           </button>

@@ -34,9 +34,8 @@ logger = logging.getLogger("ecopilot.coach")
 
 class CoachController:
     @staticmethod
-    async def assess_habits(log_data: SustainabilityAssessmentRequest, db: Any, current_user: dict) -> dict:
-        repo = CoachRepository(db)
-        # Compute sha256 cache key from habits contents to optimize latency
+    async def _get_habits_assessment(log_data: SustainabilityAssessmentRequest) -> tuple[dict, int, int, float]:
+        """Looks up habits assessment in cache, or queries Gemini, returning assessment payload and token metrics."""
         cache_str = f"{log_data.travel}||{log_data.food}||{log_data.electricity}||{log_data.waste}||{log_data.water}"
         cache_key = hashlib.sha256(cache_str.encode("utf-8")).hexdigest()
         
@@ -44,77 +43,53 @@ class CoachController:
         cached_result = assessment_cache.get(cache_key)
         if cached_result:
             logger.info("Serving cached habits assessment.")
-            assessment_json = cached_result
+            return cached_result, 0, 0, time.perf_counter() - start_time
+            
+        logger.info("Requesting new habits analysis from Gemini.")
+        gemini = GeminiAIService()
+        try:
+            assessment_json = await gemini.analyze_sustainability(
+                travel=log_data.travel,
+                food=log_data.food,
+                electricity=log_data.electricity,
+                waste=log_data.waste,
+                water=log_data.water
+            )
             response_time = time.perf_counter() - start_time
-            prompt_tokens = 0
-            completion_tokens = 0
-        else:
-            logger.info("Requesting new habits analysis from Gemini.")
-            gemini = GeminiAIService()
-            try:
-                assessment_json = await gemini.analyze_sustainability(
-                    travel=log_data.travel,
-                    food=log_data.food,
-                    electricity=log_data.electricity,
-                    waste=log_data.waste,
-                    water=log_data.water
-                )
-                response_time = time.perf_counter() - start_time
-                # Estimate tokens
-                prompt_tokens = (len(log_data.travel) + len(log_data.food) + len(log_data.electricity) + len(log_data.waste) + len(log_data.water)) // 4
-                completion_tokens = len(json.dumps(assessment_json)) // 4
-                # Cache results
-                assessment_cache.set(cache_key, assessment_json)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Gemini habits analysis failed: {e}"
-                )
+            prompt_tokens = (len(log_data.travel) + len(log_data.food) + len(log_data.electricity) + len(log_data.waste) + len(log_data.water)) // 4
+            completion_tokens = len(json.dumps(assessment_json)) // 4
+            assessment_cache.set(cache_key, assessment_json)
+            return assessment_json, prompt_tokens, completion_tokens, response_time
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Gemini habits analysis failed: {e}"
+            )
 
-        # Retrieve or create coaching session
-        session_id = log_data.session_id
+    @staticmethod
+    async def _get_or_create_coaching_session(session_id: str | None, current_user_id: str, repo: CoachRepository) -> str:
+        """Fetches an existing session or creates a new one for user."""
         if session_id:
             session = await repo.get_session_by_id(session_id)
-            if not session or str(session["user_id"]) != current_user["id"]:
+            if not session or str(session["user_id"]) != current_user_id:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Coaching session not found."
                 )
-        else:
-            # Spawn new thread
-            new_session = {
-                "user_id": ObjectId(current_user["id"]),
-                "session_title": f"Eco Profile - {datetime.now(timezone.utc).strftime('%b %d, %H:%M')}",
-                "messages": [],
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc)
-            }
-            session_id = await repo.create_session(new_session)
+            return session_id
 
-        # Construct summary of prompt input
-        user_message_content = (
-            f"Here is my sustainability profile:\n"
-            f"- 🚗 Travel: {log_data.travel}\n"
-            f"- 🥗 Food: {log_data.food}\n"
-            f"- ⚡ Electricity: {log_data.electricity}\n"
-            f"- 🗑️ Waste: {log_data.waste}\n"
-            f"- 💧 Water: {log_data.water}"
-        )
-        
-        # Append user habits statement message
-        user_msg = {
-            "role": "user",
-            "content": user_message_content,
-            "timestamp": datetime.now(timezone.utc)
+        new_session = {
+            "user_id": ObjectId(current_user_id),
+            "session_title": f"Eco Profile - {datetime.now(timezone.utc).strftime('%b %d, %H:%M')}",
+            "messages": [],
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         }
-        await repo.add_message(
-            session_id,
-            user_msg,
-            token_usage={"prompt_tokens": len(user_message_content) // 4, "completion_tokens": 0, "total_tokens": len(user_message_content) // 4},
-            response_time=0.0
-        )
+        return await repo.create_session(new_session)
 
-        # Format assistant audit report message
+    @staticmethod
+    def _format_assessment_md(assessment_json: dict) -> str:
+        """Helper to format visual sustainability report markdown block."""
         md = "### 🌱 Sustainability Assessment Report\n\n"
         md += "#### 🚨 Top Emission Sources\n"
         for src in assessment_json.get("top_emission_sources", []):
@@ -133,26 +108,40 @@ class CoachController:
         md += f"- **Expected Savings (Overall)**: {assessment_json.get('expected_savings')}\n"
         md += f"- **CO2 Reduction (Overall)**: {assessment_json.get('co2_reduction')}\n"
         md += f"- **Difficulty Level**: {assessment_json.get('difficulty_level')}\n"
-        assistant_report = md
+        return md
 
-        assistant_msg = {
-            "role": "assistant",
-            "content": assistant_report,
-            "timestamp": datetime.now(timezone.utc)
-        }
+    @staticmethod
+    async def assess_habits(log_data: SustainabilityAssessmentRequest, db: Any, current_user: dict) -> dict:
+        repo = CoachRepository(db)
+        
+        assessment_json, prompt_tokens, completion_tokens, response_time = await CoachController._get_habits_assessment(log_data)
+        session_id = await CoachController._get_or_create_coaching_session(log_data.session_id, current_user["id"], repo)
+
+        user_message_content = (
+            f"Here is my sustainability profile:\n"
+            f"- 🚗 Travel: {log_data.travel}\n"
+            f"- 🥗 Food: {log_data.food}\n"
+            f"- ⚡ Electricity: {log_data.electricity}\n"
+            f"- 🗑️ Waste: {log_data.waste}\n"
+            f"- 💧 Water: {log_data.water}"
+        )
+        
         await repo.add_message(
             session_id,
-            assistant_msg,
+            {"role": "user", "content": user_message_content, "timestamp": datetime.now(timezone.utc)},
+            token_usage={"prompt_tokens": len(user_message_content) // 4, "completion_tokens": 0, "total_tokens": len(user_message_content) // 4},
+            response_time=0.0
+        )
+
+        assistant_report = CoachController._format_assessment_md(assessment_json)
+        await repo.add_message(
+            session_id,
+            {"role": "assistant", "content": assistant_report, "timestamp": datetime.now(timezone.utc)},
             model="gemini-2.5-flash",
-            token_usage={
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens
-            },
+            token_usage={"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": prompt_tokens + completion_tokens},
             response_time=response_time
         )
 
-        # Format output
         return {
             "session_id": session_id,
             "top_emission_sources": assessment_json.get("top_emission_sources", []),
@@ -197,7 +186,6 @@ class CoachController:
         new_session["_id"] = sess_id
         new_session["user_id"] = str(new_session["user_id"])
         
-        # Save welcome message to chat_history too!
         await repo.db["chat_history"].insert_one({
             "conversation_id": ObjectId(sess_id),
             "session_id": ObjectId(sess_id),
@@ -265,22 +253,8 @@ class CoachController:
         return {"message": "Coaching thread deleted successfully."}
 
     @staticmethod
-    async def stream_coach_message(session_id: str, payload: ChatMessageRequest, db: Any, current_user: dict) -> StreamingResponse:
-        repo = CoachRepository(db)
-        session = await repo.get_session_by_id(session_id)
-        if not session or session["user_id"] != current_user["id"]:
-            raise HTTPException(status_code=404, detail="Coaching session not found")
-
-        # Fetch complete messages from the session (up to 1000)
-        messages_list = await repo.get_messages(session_id, limit=1000, offset=0)
-        if not messages_list:
-            messages_list = session.get("messages", [])
-
-        # Trim context: send only the last 10 messages for active history
-        trimmed_history = messages_list[-10:]
-        history = [{"role": msg["role"], "content": msg.get("content") or msg.get("message") or ""} for msg in trimmed_history]
-
-        # Calculate / retrieve summary of older history context
+    async def _prepare_history_summary(session_id: str, messages_list: list, session: dict, repo: CoachRepository) -> str:
+        """Fetches or calculates the summary of older coaching chat messages."""
         older_history = messages_list[:-10]
         history_summary = session.get("history_summary", "")
         summarized_count = session.get("summarized_count", 0)
@@ -297,15 +271,17 @@ class CoachController:
                 logger.info(f"Updated coaching history summary for session {session_id} ({new_count} messages summarized).")
             except Exception as e:
                 logger.error(f"Error computing history summary: {e}")
+        return history_summary
 
-        # Append user message to database
+    @staticmethod
+    async def _post_user_message(session_id: str, message_text: str, history: list, repo: CoachRepository) -> int:
+        """Appends new user message to the database and estimates input tokens."""
         user_msg = {
             "role": "user",
-            "content": payload.message,
+            "content": message_text,
             "timestamp": datetime.now(timezone.utc)
         }
-        # Estimate input tokens
-        input_token_est = (len(payload.message) + sum(len(h["content"]) for h in history)) // 4
+        input_token_est = (len(message_text) + sum(len(h["content"]) for h in history)) // 4
         await repo.add_message(
             session_id=session_id,
             message=user_msg,
@@ -313,13 +289,17 @@ class CoachController:
             token_usage={"prompt_tokens": input_token_est, "completion_tokens": 0, "total_tokens": input_token_est},
             response_time=0.0
         )
-        
+        return input_token_est
+
+    @staticmethod
+    def _create_event_generator(session_id: str, history: list, user_message: str, history_summary: str, input_token_est: int, repo: CoachRepository):
+        """Creates the streaming text generator for Gemini chatbot responses."""
         async def event_generator():
             gemini = GeminiAIService()
             accumulated_response = ""
             start_time = time.perf_counter()
             try:
-                async for chunk in gemini.generate_chat_response_stream(history, payload.message, history_summary=history_summary):
+                async for chunk in gemini.generate_chat_response_stream(history, user_message, history_summary=history_summary):
                     if chunk:
                         accumulated_response += chunk
                         yield chunk
@@ -333,7 +313,6 @@ class CoachController:
             response_time_sec = end_time - start_time
             completion_token_est = len(accumulated_response) // 4
 
-            # Save assistant response to DB
             assistant_msg = {
                 "role": "assistant",
                 "content": accumulated_response,
@@ -350,8 +329,27 @@ class CoachController:
                 },
                 response_time=response_time_sec
             )
+        return event_generator()
 
-        return StreamingResponse(event_generator(), media_type="text/event-stream")
+    @staticmethod
+    async def stream_coach_message(session_id: str, payload: ChatMessageRequest, db: Any, current_user: dict) -> StreamingResponse:
+        repo = CoachRepository(db)
+        session = await repo.get_session_by_id(session_id)
+        if not session or session["user_id"] != current_user["id"]:
+            raise HTTPException(status_code=404, detail="Coaching session not found")
+
+        messages_list = await repo.get_messages(session_id, limit=1000, offset=0)
+        if not messages_list:
+            messages_list = session.get("messages", [])
+
+        trimmed_history = messages_list[-10:]
+        history = [{"role": msg["role"], "content": msg.get("content") or msg.get("message") or ""} for msg in trimmed_history]
+
+        history_summary = await CoachController._prepare_history_summary(session_id, messages_list, session, repo)
+        input_token_est = await CoachController._post_user_message(session_id, payload.message, history, repo)
+        
+        gen = CoachController._create_event_generator(session_id, history, payload.message, history_summary, input_token_est, repo)
+        return StreamingResponse(gen, media_type="text/event-stream")
 
     @staticmethod
     async def search_chat_history(q: str, limit: int, db: Any, current_user: dict) -> list:
