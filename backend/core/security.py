@@ -9,6 +9,7 @@ import jwt
 from passlib.context import CryptContext
 from bson import ObjectId
 
+from repositories.user import UserRepository
 from .config import settings
 from .database import get_db
 
@@ -84,6 +85,7 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
     Falls back to the demo user ONLY in development/testing mode when no token is provided.
     Raises HTTPException (401) immediately for any invalid/expired token, or if running in production.
     """
+    user_repo = UserRepository(db)
     # Allow token retrieval via query parameter (e.g. for PDF downloads)
     if not token:
         token = request.query_params.get("token")
@@ -94,7 +96,7 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
             email: str = payload.get("sub")
             token_type: str = payload.get("type", "access")
             if email and token_type == "access":
-                user = await db["users"].find_one({"email": email})
+                user = await user_repo.get_by_email(email)
                 if user:
                     user["id"] = str(user["_id"])
                     return user
@@ -125,7 +127,7 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
         )
 
     # No token in non-production: resolve or auto-create the demo user
-    demo_user = await db["users"].find_one({"email": "demo@ecopilot.ai"})
+    demo_user = await user_repo.get_by_email("demo@ecopilot.ai")
     if demo_user:
         demo_user["id"] = str(demo_user["_id"])
         return demo_user
@@ -142,6 +144,8 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
             "has_car": True
         }
     }
-    res = await db["users"].insert_one(demo_user)
-    demo_user["id"] = str(res.inserted_id)
+    demo_id = await user_repo.create(demo_user)
+    demo_user["_id"] = ObjectId(demo_id)
+    demo_user["id"] = demo_id
     return demo_user
+

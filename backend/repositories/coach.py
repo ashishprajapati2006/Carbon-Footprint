@@ -140,3 +140,37 @@ class CoachRepository:
             if isinstance(msg.get("timestamp"), datetime):
                 msg["timestamp"] = msg["timestamp"].isoformat()
         return results
+
+    async def update_session_summary(self, session_id: str, summary: str, count: int) -> bool:
+        if not ObjectId.is_valid(session_id):
+            return False
+        res = await self.db["coaching_sessions"].update_one(
+            {"_id": ObjectId(session_id)},
+            {"$set": {"history_summary": summary, "summarized_count": count}}
+        )
+        return res.modified_count > 0
+
+    async def log_initial_chat_message(
+        self,
+        session_id: str,
+        user_id: str,
+        message: Dict[str, Any],
+        model: str = "gemini-2.5-flash",
+        token_usage: Optional[Dict[str, int]] = None
+    ) -> None:
+        chat_doc = {
+            "conversation_id": ObjectId(session_id),
+            "session_id": ObjectId(session_id),
+            "user_id": ObjectId(user_id),
+            "timestamp": message.get("timestamp") or datetime.now(timezone.utc),
+            "role": message["role"],
+            "message": message["content"],
+            "content": message["content"],
+            "model": model,
+            "token_usage": token_usage or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "response_time": 0.0,
+            "metadata": {},
+            "updated_at": datetime.now(timezone.utc)
+        }
+        await self.db["chat_history"].insert_one(chat_doc)
+

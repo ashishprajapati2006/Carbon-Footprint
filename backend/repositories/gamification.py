@@ -1,6 +1,7 @@
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
+
 
 class GamificationRepository:
     def __init__(self, db: Any):
@@ -67,3 +68,33 @@ class GamificationRepository:
             log["_id"] = str(log["_id"])
             log["user_id"] = str(log["user_id"])
         return logs
+
+    async def insert_points_log(self, log_entry: Dict[str, Any]) -> str:
+        if isinstance(log_entry.get("user_id"), str):
+            log_entry["user_id"] = ObjectId(log_entry["user_id"])
+        res = await self.db["points_logs"].insert_one(log_entry)
+        return str(res.inserted_id)
+
+    async def update_leaderboard_entry(
+        self, user_id: str, username: str, level_name: str, points: int, monthly_co2: float
+    ) -> bool:
+        res = await self.db["leaderboard"].update_one(
+            {"user_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "username": username,
+                    "level_name": level_name,
+                    "points": points,
+                    "monthly_co2_kg": monthly_co2,
+                    "updated_at": datetime.now(timezone.utc)
+                }
+            },
+            upsert=True
+        )
+        return res.modified_count > 0 or res.upserted_id is not None
+
+    async def get_all_leaderboard_entries(self, limit: int = 100) -> List[Dict[str, Any]]:
+        cursor = self.db["leaderboard"].find({})
+        entries = await cursor.to_list(length=limit)
+        return entries
+

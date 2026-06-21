@@ -18,7 +18,6 @@ class OCRService:
     Supports direct PDF text extraction, Google Cloud Vision OCR, Tesseract OCR, and Gemini multimodal.
     """
     def __init__(self):
-        # Configure Google Vision credentials environment path
         creds_path = settings.google_application_credentials
         if creds_path and os.path.exists(creds_path):
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
@@ -34,7 +33,7 @@ class OCRService:
         try:
             reader = PdfReader(io.BytesIO(pdf_bytes))
             text = ""
-            for idx, page in enumerate(reader.pages):
+            for page in reader.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
@@ -53,7 +52,6 @@ class OCRService:
         client = vision.ImageAnnotatorClient()
         image = vision.Image(content=image_bytes)
         
-        # Performs text detection
         response = client.text_detection(image=image)
         texts = response.text_annotations
         
@@ -61,10 +59,8 @@ class OCRService:
             raise RuntimeError(f"Google Vision API Error: {response.error.message}")
             
         if texts:
-            # The first annotation contains the entire text block
             logger.info("Google Cloud Vision OCR extraction complete.")
             return texts[0].description
-            
         return ""
 
     def tesseract_ocr(self, image_bytes: bytes) -> str:
@@ -83,21 +79,31 @@ class OCRService:
             raise e
 
     async def perform_ocr(self, file_bytes: bytes, filename: str, content_type: str) -> str:
-        """
-        Coordinates text extraction and OCR pipelines:
-        1. If PDF: Try direct text parsing first.
-        2. Try Google Vision OCR.
-        3. Fallback to Tesseract OCR.
-        4. Fallback to Gemini Multimodal vision to read the document.
-        """
-        # 1. PDF Direct Parsing
+        """Coordinates text extraction and OCR pipelines using helper methods."""
+        pdf_text = self._try_pdf_direct_parsing(file_bytes, filename, content_type)
+        if pdf_text:
+            return pdf_text
+
+        vision_text = await self._try_google_vision_ocr(file_bytes)
+        if vision_text:
+            return vision_text
+
+        tess_text = self._try_tesseract_ocr(file_bytes)
+        if tess_text:
+            return tess_text
+
+        return await self._try_gemini_fallback_ocr(file_bytes, filename, content_type)
+
+    def _try_pdf_direct_parsing(self, file_bytes: bytes, filename: str, content_type: str) -> str:
+        """Helper to run direct PDF extraction if format matches."""
         if content_type == "application/pdf" or filename.lower().endswith(".pdf"):
             pdf_text = self.extract_text_from_pdf(file_bytes)
             if pdf_text.strip():
                 return pdf_text
+        return ""
 
-        # Convert PDF page to image or treat image upload directly
-        # 2. Try Google Vision
+    async def _try_google_vision_ocr(self, file_bytes: bytes) -> str:
+        """Helper to execute Google Vision OCR and catch any failures."""
         if self.has_vision_creds:
             try:
                 vision_text = await self.google_vision_ocr(file_bytes)
@@ -105,54 +111,43 @@ class OCRService:
                     return vision_text
             except Exception as e:
                 logger.warning(f"Google Vision OCR failed: {e}. Trying Tesseract fallback...")
+        return ""
 
-        # 3. Try Tesseract
+    def _try_tesseract_ocr(self, file_bytes: bytes) -> str:
+        """Helper to execute Tesseract OCR and catch any failures."""
         try:
             tess_text = self.tesseract_ocr(file_bytes)
             if tess_text.strip():
                 return tess_text
         except Exception as e:
             logger.warning(f"Tesseract OCR failed: {e}. Falling back to Gemini Multimodal.")
+        return ""
 
-        # 4. Final Fallback: Ask Gemini to perform visual OCR
+    async def _try_gemini_fallback_ocr(self, file_bytes: bytes, filename: str, content_type: str) -> str:
+        """Final OCR fallback helper using Gemini Multimodal vision parsing."""
         logger.info("Invoking Gemini multimodal API as final OCR fallback...")
         try:
             gemini_svc = GeminiAIService()
-            # If PDF, we might need image format, but Gemini API can ingest some PDF directly, 
-            # or we pass a text request. For images, Gemini handles it natively.
             prompt = (
                 "Please read this utility bill carefully. Transcribe all text, numbers, "
                 "tables, and figures you see on it. Return only the transcript."
             )
-            # Adjust MIME type if PDF is passed but in mock mode, Gemini expects valid types
             mime_type = content_type
             if content_type == "application/pdf":
-                # For PDF fallback in Gemini, if PDF upload isn't directly supported by multimodal in the wrapper,
-                # we return a mocked invoice text to prevent server crash.
                 if gemini_svc.is_mock:
                     return (
-                        "MOCK PDF UTILITY BILL TEXT\n"
-                        "Account: 12345-6789\n"
-                        "Billing period: 2026-05\n"
-                        "Consumption: 420.0 kWh\n"
-                        "Total charges: $64.50"
+                        "MOCK PDF UTILITY BILL TEXT\nAccount: 12345-6789\n"
+                        "Billing period: 2026-05\nConsumption: 420.0 kWh\nTotal charges: $64.50"
                     )
-                mime_type = "application/pdf"
             
             transcription = await gemini_svc.analyze_multimodal(
-                image_bytes=file_bytes,
-                mime_type=mime_type,
-                prompt=prompt
+                image_bytes=file_bytes, mime_type=mime_type, prompt=prompt
             )
             logger.info("Gemini Multimodal OCR fallback complete.")
             return transcription
         except Exception as gemini_err:
             logger.error(f"All OCR pipelines (including Gemini) failed: {gemini_err}")
-            # Fallback placeholder to prevent API failures
             return (
-                "DEMO BILL OCR TEXT (FALLBACK)\n"
-                "Monthly Electricity Invoice\n"
-                "Billing Period: 2026-05\n"
-                "Total Usage: 350.0 kWh\n"
-                "Total Cost: $55.00"
+                "DEMO BILL OCR TEXT (FALLBACK)\nMonthly Electricity Invoice\n"
+                "Billing Period: 2026-05\nTotal Usage: 350.0 kWh\nTotal Cost: $55.00"
             )

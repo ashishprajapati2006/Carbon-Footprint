@@ -28,3 +28,15 @@ class BillRepository:
             bill["_id"] = str(bill["_id"])
             bill["user_id"] = str(bill["user_id"])
         return bill
+
+    async def get_bills_by_unit(self, user_id: str, unit: str) -> List[Dict[str, Any]]:
+        cursor = self.db["bill_analyses"].find({
+            "user_id": ObjectId(user_id),
+            "consumption_unit": unit
+        })
+        history = await cursor.to_list(length=100)
+        for h in history:
+            h["_id"] = str(h["_id"])
+            h["user_id"] = str(h["user_id"])
+        return history
+

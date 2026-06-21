@@ -186,20 +186,14 @@ class CoachController:
         new_session["_id"] = sess_id
         new_session["user_id"] = str(new_session["user_id"])
         
-        await repo.db["chat_history"].insert_one({
-            "conversation_id": ObjectId(sess_id),
-            "session_id": ObjectId(sess_id),
-            "user_id": ObjectId(current_user["id"]),
-            "timestamp": new_session["messages"][0]["timestamp"],
-            "role": "assistant",
-            "message": welcome_text,
-            "content": welcome_text,
-            "model": "gemini-2.5-flash",
-            "token_usage": {"prompt_tokens": 0, "completion_tokens": len(welcome_text) // 4, "total_tokens": len(welcome_text) // 4},
-            "response_time": 0.0,
-            "metadata": {},
-            "updated_at": datetime.now(timezone.utc)
-        })
+        await repo.log_initial_chat_message(
+            session_id=sess_id,
+            user_id=current_user["id"],
+            message=new_session["messages"][0],
+            model="gemini-2.5-flash",
+            token_usage={"prompt_tokens": 0, "completion_tokens": len(welcome_text) // 4, "total_tokens": len(welcome_text) // 4}
+        )
+
         
         new_session["messages"][0]["timestamp"] = new_session["messages"][0]["timestamp"].isoformat()
         new_session["created_at"] = new_session["created_at"].isoformat()
@@ -264,10 +258,7 @@ class CoachController:
             gemini = GeminiAIService()
             try:
                 history_summary = await gemini.generate_history_summary(older_history)
-                await repo.db["coaching_sessions"].update_one(
-                    {"_id": ObjectId(session_id)},
-                    {"$set": {"history_summary": history_summary, "summarized_count": new_count}}
-                )
+                await repo.update_session_summary(session_id, history_summary, new_count)
                 logger.info(f"Updated coaching history summary for session {session_id} ({new_count} messages summarized).")
             except Exception as e:
                 logger.error(f"Error computing history summary: {e}")

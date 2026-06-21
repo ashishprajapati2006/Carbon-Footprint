@@ -1,6 +1,6 @@
 from bson import ObjectId
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 class UserRepository:
     def __init__(self, db: Any):
@@ -61,3 +61,11 @@ class UserRepository:
     async def delete_password_reset(self, token: str) -> bool:
         res = await self.db["password_resets"].delete_one({"token": token})
         return res.deleted_count > 0
+
+    async def update_points_and_badges(self, user_id: str, points: int, badges: List[str]) -> bool:
+        res = await self.db["users"].update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"points": points, "badges": badges}}
+        )
+        return res.modified_count > 0
+

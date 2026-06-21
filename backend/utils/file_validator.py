@@ -5,11 +5,8 @@ from fastapi import HTTPException, status, UploadFile
 def sanitize_filename(filename: str) -> str:
     """Sanitizes file name to prevent path traversal, hidden files, or weird characters."""
     import os
-    # Get only base name
     base = os.path.basename(filename)
-    # Remove any character that isn't alphanumeric, a dot, dash, or underscore
     base = re.sub(r'[^a-zA-Z0-9._-]', '', base)
-    # Prevent leading dots/spaces
     base = base.lstrip('.')
     return base or "uploaded_file"
 
@@ -19,30 +16,52 @@ async def validate_uploaded_file(
     allowed_mimes: Set[str],
     max_size: int
 ) -> bytes:
-    """
-    Validates an uploaded file.
-    Checks:
-    - Path traversal attempts or double extensions.
-    - Matches extension and MIME types.
-    - Restricts maximum file size.
-    - Inspects file content magic bytes for PE binaries (MZ), ELF binaries (\x7fELF),
-      or script shebangs (#!).
-    - Validates PDF, PNG, and JPEG magic signatures to prevent spoofing.
-    Returns:
-      file_bytes (bytes)
-    """
+    """Validates an uploaded file: size, extensions, magic bytes, and signature verification."""
     filename = file.filename or ""
-    
-    # 1. Path traversal verification
+    _check_filename_traversal(filename)
+    sanitized = sanitize_filename(filename)
+    _check_double_extension(sanitized)
+
+    ext = sanitized.split('.')[-1].lower() if '.' in sanitized else ""
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file format '.{ext}'. Allowed: {', '.join(allowed_extensions)}"
+        )
+
+    mime = file.content_type or ""
+    if mime.lower() not in allowed_mimes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported MIME type '{mime}'. Allowed: {', '.join(allowed_mimes)}"
+        )
+
+    try:
+        content = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to read upload stream: {e}")
+
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File size exceeds limit of {max_size / (1024 * 1024):.1f} MB."
+        )
+
+    file.file.seek(0)
+    _check_magic_bytes(content)
+    _check_spoofing_signature(content, ext)
+    return content
+
+def _check_filename_traversal(filename: str) -> None:
+    """Ensures filename doesn't contain traversal markers."""
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Filename contains invalid directory path traversal characters."
         )
 
-    sanitized = sanitize_filename(filename)
-    
-    # 2. Check for double extension execution patterns (e.g. image.png.exe)
+def _check_double_extension(sanitized: str) -> None:
+    """Blocks files with dangerous nested extension keywords."""
     parts = sanitized.split('.')
     if len(parts) > 2:
         for part in parts[1:]:
@@ -52,40 +71,8 @@ async def validate_uploaded_file(
                     detail="Double extension or executable pattern detected in filename."
                 )
 
-    ext = sanitized.split('.')[-1].lower() if '.' in sanitized else ""
-    if ext not in allowed_extensions:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file format '.{ext}'. Allowed: {', '.join(allowed_extensions)}"
-        )
-
-    # 3. MIME type validation
-    mime = file.content_type or ""
-    if mime.lower() not in allowed_mimes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported MIME type '{mime}'. Allowed: {', '.join(allowed_mimes)}"
-        )
-
-    # 4. Read file content and check size
-    try:
-        content = await file.read()
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to read file upload stream: {e}"
-        )
-
-    if len(content) > max_size:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File size exceeds maximum limit of {max_size / (1024 * 1024):.1f} MB."
-        )
-
-    # Reset upload file pointer just in case it's read again elsewhere
-    file.file.seek(0)
-
-    # 5. Inspect magic bytes for virus/executable safety
+def _check_magic_bytes(content: bytes) -> None:
+    """Performs virus and executable detection using binary headers."""
     if content.startswith(b'MZ'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -102,7 +89,8 @@ async def validate_uploaded_file(
             detail="Malicious upload rejected: File starts with a script shebang signature."
         )
 
-    # 6. Verify file signature against extension to prevent spoofing
+def _check_spoofing_signature(content: bytes, ext: str) -> None:
+    """Verifies image and document payloads against expected headers."""
     if ext == 'pdf' and not content.startswith(b'%PDF'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -118,5 +106,3 @@ async def validate_uploaded_file(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Spoofing check failed: File extension is JPEG, but JPEG header signature is missing."
         )
-
-    return content

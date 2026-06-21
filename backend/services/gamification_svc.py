@@ -4,6 +4,10 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 from bson import ObjectId
 
+from repositories.user import UserRepository
+from repositories.gamification import GamificationRepository
+from repositories.footprint import FootprintRepository
+
 logger = logging.getLogger("ecopilot.gamification_svc")
 
 ACTION_POINTS = {
@@ -27,7 +31,6 @@ class GamificationService:
     def get_week_start() -> datetime:
         """Returns the start of the current week (Monday 00:00:00 UTC)."""
         now = datetime.now(timezone.utc)
-        # weekday() is 0 for Monday, 6 for Sunday
         start = now - timedelta(days=now.weekday())
         return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -39,107 +42,84 @@ class GamificationService:
 
     @classmethod
     async def award_points(cls, user_id: str, action: str, db: Any) -> Dict[str, Any]:
-        """
-        Awards points to a user for a given action.
-        Logs the transaction, updates user total points/badges, and returns update details.
-        """
+        """Awards points to a user for a given action using repositories."""
         points = ACTION_POINTS.get(action, 0)
         if points == 0:
             logger.warning(f"Attempted to award points for unrecognized action: {action}")
             return {"awarded": 0, "total": 0, "badges_unlocked": []}
 
         # 1. Log the points transaction
+        gam_repo = GamificationRepository(db)
         log_entry = {
             "user_id": ObjectId(user_id),
             "action": action,
             "points": points,
             "timestamp": datetime.now(timezone.utc)
         }
-        await db["points_logs"].insert_one(log_entry)
+        await gam_repo.insert_points_log(log_entry)
 
-        # 2. Get the current user profile
-        user = await db["users"].find_one({"_id": ObjectId(user_id)})
-        if not user:
-            logger.error(f"User {user_id} not found when awarding points.")
-            return {"awarded": points, "total": points, "badges_unlocked": []}
-
-        current_points = user.get("points", 0)
-        current_badges = user.get("badges", [])
-
-        new_points = current_points + points
-        new_badges = list(current_badges)
-
-        # 3. Evaluate Badge thresholds
-        unlocked_new_badges = []
-        for badge_def in BADGE_THRESHOLDS:
-            badge_name = badge_def["name"]
-            req_points = badge_def["points"]
-            if new_points >= req_points and badge_name not in new_badges:
-                new_badges.append(badge_name)
-                unlocked_new_badges.append(badge_name)
-
-        # 4. Save to user document
-        await db["users"].update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"points": new_points, "badges": new_badges}}
-        )
-
-        # Sync user profile & emissions to leaderboard collection
+        # 2. Update user profile and evaluate badge thresholds
+        user_repo = UserRepository(db)
+        res = await cls._update_user_points_and_badges(user_id, points, user_repo)
+        
+        # 3. Sync to leaderboard
         try:
             await cls.sync_user_to_leaderboard(user_id, db)
         except Exception as e:
             logger.error(f"Failed to sync user leaderboard stats: {e}")
 
-        logger.info(f"Awarded {points} points to user {user_id} for '{action}'. Total: {new_points}. New badges: {unlocked_new_badges}")
+        logger.info(f"Awarded {points} points to user {user_id} for '{action}'. New badges: {res['badges_unlocked']}")
         return {
             "awarded": points,
-            "total_points": new_points,
+            "total_points": res["new_points"],
+            "badges_unlocked": res["badges_unlocked"],
+            "all_badges": res["new_badges"]
+        }
+
+    @classmethod
+    async def _update_user_points_and_badges(cls, user_id: str, points: int, user_repo: UserRepository) -> Dict[str, Any]:
+        """Helper to fetch user, add points, check badge thresholds, and update."""
+        user = await user_repo.get_by_id(user_id)
+        if not user:
+            logger.error(f"User {user_id} not found when awarding points.")
+            return {"new_points": points, "badges_unlocked": [], "new_badges": []}
+
+        current_points = user.get("points", 0)
+        current_badges = user.get("badges", [])
+        new_points = current_points + points
+        new_badges = list(current_badges)
+
+        unlocked_new_badges = []
+        for badge_def in BADGE_THRESHOLDS:
+            badge_name = badge_def["name"]
+            if new_points >= badge_def["points"] and badge_name not in new_badges:
+                new_badges.append(badge_name)
+                unlocked_new_badges.append(badge_name)
+
+        await user_repo.update_points_and_badges(user_id, new_points, new_badges)
+        return {
+            "new_points": new_points,
             "badges_unlocked": unlocked_new_badges,
-            "all_badges": new_badges
+            "new_badges": new_badges
         }
 
     @classmethod
     async def get_user_stats(cls, user_id: str, db: Any) -> Dict[str, Any]:
-        """
-        Retrieves user points (Weekly, Monthly, Global), level information, and badges.
-        """
-        user = await db["users"].find_one({"_id": ObjectId(user_id)})
+        """Retrieves user points and level progression info via repositories."""
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_id(user_id)
         if not user:
-            return {
-                "points": 0,
-                "weekly_points": 0,
-                "monthly_points": 0,
-                "level": 1,
-                "xp_in_level": 0,
-                "badges": []
-            }
+            return {"points": 0, "weekly_points": 0, "monthly_points": 0, "level": 1, "xp_in_level": 0, "badges": []}
 
         global_points = user.get("points", 0)
         badges = user.get("badges", [])
-
-        # Calculate Level (XP per level progression)
         level = math.floor(global_points / cls.POINTS_PER_LEVEL) + 1
         xp_in_level = global_points % cls.POINTS_PER_LEVEL
 
         # Calculate Weekly and Monthly points from transaction logs
-        week_start = cls.get_week_start()
-        month_start = cls.get_month_start()
-
-        # Query weekly logs
-        weekly_cursor = db["points_logs"].find({
-            "user_id": ObjectId(user_id),
-            "timestamp": {"$gte": week_start}
-        })
-        weekly_logs = await weekly_cursor.to_list(length=1000)
-        weekly_points = sum(log.get("points", 0) for log in weekly_logs)
-
-        # Query monthly logs
-        monthly_cursor = db["points_logs"].find({
-            "user_id": ObjectId(user_id),
-            "timestamp": {"$gte": month_start}
-        })
-        monthly_logs = await monthly_cursor.to_list(length=1000)
-        monthly_points = sum(log.get("points", 0) for log in monthly_logs)
+        gam_repo = GamificationRepository(db)
+        weekly_points = await cls._calculate_time_range_points(user_id, cls.get_week_start(), gam_repo)
+        monthly_points = await cls._calculate_time_range_points(user_id, cls.get_month_start(), gam_repo)
 
         return {
             "points": global_points,
@@ -150,122 +130,135 @@ class GamificationService:
             "badges": badges
         }
 
+    @staticmethod
+    async def _calculate_time_range_points(user_id: str, start_date: datetime, gam_repo: GamificationRepository) -> int:
+        """Helper to sum points earned by a user since a start date."""
+        logs = await gam_repo.get_points_logs_by_range(user_id, start_date)
+        return sum(log.get("points", 0) for log in logs)
+
     @classmethod
     async def sync_user_to_leaderboard(cls, user_id: str, db: Any) -> None:
         """Calculates current user parameters and saves/upserts to the leaderboard collection."""
-        user = await db["users"].find_one({"_id": ObjectId(user_id)})
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_id(user_id)
         if not user:
             return
         
-        # Calculate monthly CO2
-        start_of_month = cls.get_month_start()
-        cursor = db["footprint_logs"].find({
-            "user_id": ObjectId(user_id),
-            "date": {"$gte": start_of_month}
-        })
-        logs = await cursor.to_list(length=500)
-        monthly_co2 = sum(log.get("total_co2_kg", 0.0) for log in logs)
+        foot_repo = FootprintRepository(db)
+        monthly_co2 = await cls._calculate_monthly_emissions(user_id, foot_repo)
 
         global_points = user.get("points", 0)
         badges = user.get("badges", [])
         level_num = math.floor(global_points / cls.POINTS_PER_LEVEL) + 1
         level_name = badges[-1] if badges else f"Level {level_num} Eco-Pioneer"
 
-        await db["leaderboard"].update_one(
-            {"user_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "username": user.get("full_name", "EcoPilot User"),
-                    "level_name": level_name,
-                    "points": global_points,
-                    "monthly_co2_kg": round(monthly_co2, 2),
-                    "updated_at": datetime.now(timezone.utc)
-                }
-            },
-            upsert=True
+        gam_repo = GamificationRepository(db)
+        await gam_repo.update_leaderboard_entry(
+            user_id=user_id,
+            username=user.get("full_name", "EcoPilot User"),
+            level_name=level_name,
+            points=global_points,
+            monthly_co2=round(monthly_co2, 2)
         )
+
+    @staticmethod
+    async def _calculate_monthly_emissions(user_id: str, foot_repo: FootprintRepository) -> float:
+        """Helper to calculate total carbon emissions for the current month."""
+        start_of_month = GamificationService.get_month_start()
+        logs = await foot_repo.get_footprints_by_range(user_id, start_of_month)
+        return sum(log.get("total_co2_kg", 0.0) for log in logs)
 
     @classmethod
     async def get_leaderboard(cls, period: str, db: Any, current_user_id: str = None) -> List[Dict[str, Any]]:
-        """
-        Retrieves leaderboard rankings from the leaderboard collection in MongoDB.
-        """
-        # Fetch entries from leaderboard collection
-        cursor = db["leaderboard"].find({})
-        entries = await cursor.to_list(length=100)
+        """Retrieves leaderboard rankings from the leaderboard collection in MongoDB."""
+        gam_repo = GamificationRepository(db)
+        entries = await gam_repo.get_all_leaderboard_entries(100)
 
-        # If leaderboard collection is completely empty, run sync for all existing users
+        # Sync leaderboard if empty
         if not entries:
-            users_cursor = db["users"].find({})
-            users = await users_cursor.to_list(length=100)
+            user_repo = UserRepository(db)
+            cursor = user_repo.db["users"].find({}) # simple user find
+            users = await cursor.to_list(length=100)
             for u in users:
                 try:
                     await cls.sync_user_to_leaderboard(str(u["_id"]), db)
                 except Exception as e:
                     logger.error(f"Failed to sync user {u['_id']}: {e}")
-            cursor = db["leaderboard"].find({})
-            entries = await cursor.to_list(length=100)
+            entries = await gam_repo.get_all_leaderboard_entries(100)
 
-        # Sort based on period
         if period == "monthly":
-            # Monthly leaderboard sorted by monthly_co2_kg ascending (lower emissions rank 1)
-            entries.sort(key=lambda x: x.get("monthly_co2_kg", 999999.0))
-            leaderboard_data = []
-            for idx, entry in enumerate(entries):
-                leaderboard_data.append({
-                    "rank": idx + 1,
-                    "user_id": str(entry["user_id"]),
-                    "name": entry.get("username", "EcoPilot User"),
-                    "level": entry.get("level_name", "Eco-Pioneer"),
-                    "points": entry.get("points", 0),
-                    "monthly_co2_kg": entry.get("monthly_co2_kg", 0.0),
-                    "isMe": str(entry["user_id"]) == str(current_user_id) if current_user_id else False
-                })
+            return cls._get_monthly_leaderboard(entries, current_user_id)
         elif period == "weekly":
-            # Sort weekly by points earned in the current week
-            week_start = cls.get_week_start()
-            logs_cursor = db["points_logs"].find({"timestamp": {"$gte": week_start}})
-            period_logs = await logs_cursor.to_list(length=5000)
-            
-            user_points_map = {}
-            for log in period_logs:
-                uid_str = str(log["user_id"])
-                user_points_map[uid_str] = user_points_map.get(uid_str, 0) + log.get("points", 0)
-                
-            entries.sort(key=lambda x: user_points_map.get(str(x["user_id"]), 0), reverse=True)
-            
-            leaderboard_data = []
-            for idx, entry in enumerate(entries):
-                uid_str = str(entry["user_id"])
-                leaderboard_data.append({
-                    "rank": idx + 1,
-                    "user_id": uid_str,
-                    "name": entry.get("username", "EcoPilot User"),
-                    "level": entry.get("level_name", "Eco-Pioneer"),
-                    "points": user_points_map.get(uid_str, 0),
-                    "monthly_co2_kg": entry.get("monthly_co2_kg", 0.0),
-                    "isMe": uid_str == str(current_user_id) if current_user_id else False
-                })
-        else: # global
-            entries.sort(key=lambda x: x.get("points", 0), reverse=True)
-            leaderboard_data = []
-            for idx, entry in enumerate(entries):
-                leaderboard_data.append({
-                    "rank": idx + 1,
-                    "user_id": str(entry["user_id"]),
-                    "name": entry.get("username", "EcoPilot User"),
-                    "level": entry.get("level_name", "Eco-Pioneer"),
-                    "points": entry.get("points", 0),
-                    "monthly_co2_kg": entry.get("monthly_co2_kg", 0.0),
-                    "isMe": str(entry["user_id"]) == str(current_user_id) if current_user_id else False
-                })
+            return await cls._get_weekly_leaderboard(entries, current_user_id, gam_repo)
+        else:
+            return cls._get_global_leaderboard(entries, current_user_id)
 
-        # Ensure we return at least a default list if there's no data
+    @staticmethod
+    def _get_monthly_leaderboard(entries: list, current_user_id: str = None) -> List[Dict[str, Any]]:
+        """Sorts and formats monthly leaderboard rankings (lowest emissions first)."""
+        sorted_entries = list(entries)
+        sorted_entries.sort(key=lambda x: x.get("monthly_co2_kg", 999999.0))
+        return [
+            {
+                "rank": idx + 1,
+                "user_id": str(entry["user_id"]),
+                "name": entry.get("username", "EcoPilot User"),
+                "level": entry.get("level_name", "Eco-Pioneer"),
+                "points": entry.get("points", 0),
+                "monthly_co2_kg": entry.get("monthly_co2_kg", 0.0),
+                "isMe": str(entry["user_id"]) == str(current_user_id) if current_user_id else False
+            }
+            for idx, entry in enumerate(sorted_entries)
+        ]
+
+    @classmethod
+    async def _get_weekly_leaderboard(cls, entries: list, current_user_id: str, gam_repo: GamificationRepository) -> List[Dict[str, Any]]:
+        """Sorts and formats weekly leaderboard rankings (highest points earned this week first)."""
+        week_start = cls.get_week_start()
+        logs = await gam_repo.get_points_logs_since(week_start)
+        
+        user_points_map = {}
+        for log in logs:
+            uid_str = str(log["user_id"])
+            user_points_map[uid_str] = user_points_map.get(uid_str, 0) + log.get("points", 0)
+            
+        sorted_entries = list(entries)
+        sorted_entries.sort(key=lambda x: user_points_map.get(str(x["user_id"]), 0), reverse=True)
+        return [
+            {
+                "rank": idx + 1,
+                "user_id": str(entry["user_id"]),
+                "name": entry.get("username", "EcoPilot User"),
+                "level": entry.get("level_name", "Eco-Pioneer"),
+                "points": user_points_map.get(str(entry["user_id"]), 0),
+                "monthly_co2_kg": entry.get("monthly_co2_kg", 0.0),
+                "isMe": str(entry["user_id"]) == str(current_user_id) if current_user_id else False
+            }
+            for idx, entry in enumerate(sorted_entries)
+        ]
+
+    @staticmethod
+    def _get_global_leaderboard(entries: list, current_user_id: str = None) -> List[Dict[str, Any]]:
+        """Sorts and formats global leaderboard rankings (highest points first)."""
+        sorted_entries = list(entries)
+        sorted_entries.sort(key=lambda x: x.get("points", 0), reverse=True)
+        leaderboard_data = [
+            {
+                "rank": idx + 1,
+                "user_id": str(entry["user_id"]),
+                "name": entry.get("username", "EcoPilot User"),
+                "level": entry.get("level_name", "Eco-Pioneer"),
+                "points": entry.get("points", 0),
+                "monthly_co2_kg": entry.get("monthly_co2_kg", 0.0),
+                "isMe": str(entry["user_id"]) == str(current_user_id) if current_user_id else False
+            }
+            for idx, entry in enumerate(sorted_entries)
+        ]
+        
         if not leaderboard_data:
-            leaderboard_data = [
+            return [
                 {"rank": 1, "user_id": "dummy_1", "name": "Marcus Aurelius", "level": "Carbon Neutral Hero", "points": 180, "isMe": False},
                 {"rank": 2, "user_id": "dummy_2", "name": "Clara Schumann", "level": "Eco Warrior", "points": 120, "isMe": False},
                 {"rank": 3, "user_id": "dummy_3", "name": "Ada Lovelace", "level": "Eco Warrior", "points": 90, "isMe": False}
             ]
-
         return leaderboard_data

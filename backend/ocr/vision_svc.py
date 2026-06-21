@@ -15,37 +15,27 @@ class VisionAnalysisService:
     def _extract_json(self, raw_text: str) -> Dict[str, Any]:
         """Cleans markdown JSON formatting backticks and returns parsed dictionary."""
         cleaned = raw_text.strip()
-        # Regex to match content inside ```json ... ```
         match = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL | re.IGNORECASE)
         if match:
             cleaned = match.group(1)
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError:
-            # Fallback parsing in case JSON is slightly malformed
-            # Return string content packaged inside a structured payload
             return {"parsing_error": True, "raw_content": raw_text}
 
     async def analyze_utility_bill(self, file_bytes: bytes, content_type: str) -> Dict[str, Any]:
         """Audits electricity bills to parse consumption values and costs."""
         prompt = (
             "Analyze this utility bill image. Extract the following values in valid JSON format:\n"
-            "{\n"
-            "  \"billing_period\": \"YYYY-MM\",\n"
-            "  \"kwh_consumed\": float,\n"
-            "  \"total_cost\": float\n"
-            "}\n"
+            "{\n  \"billing_period\": \"YYYY-MM\",\n  \"kwh_consumed\": float,\n  \"total_cost\": float\n}\n"
             "Provide ONLY the JSON output, no additional text or explanations."
         )
         
         raw_response = await self.gemini.analyze_multimodal(
-            image_bytes=file_bytes,
-            mime_type=content_type,
-            prompt=prompt
+            image_bytes=file_bytes, mime_type=content_type, prompt=prompt
         )
         parsed = self._extract_json(raw_response)
         
-        # Apply standard defaults if values are missing
         if "kwh_consumed" not in parsed or parsed.get("kwh_consumed") is None:
             parsed["kwh_consumed"] = 350.0
         if "total_cost" not in parsed or parsed.get("total_cost") is None:
@@ -60,43 +50,32 @@ class VisionAnalysisService:
         prompt = (
             f"Audit this room image representing a '{room_type}'. Identify electricity-consuming appliances "
             "and output a green-rating analysis in valid JSON format matching this schema:\n"
-            "{\n"
-            "  \"room_type\": \"string\",\n"
-            "  \"detected_appliances\": [\n"
-            "    {\n"
-            "      \"name\": \"string\",\n"
-            "      \"type\": \"Fan\" | \"AC\" | \"TV\" | \"Lights\" | \"Appliances\",\n"
+            "{\n  \"room_type\": \"string\",\n  \"detected_appliances\": [\n"
+            "    {\n      \"name\": \"string\",\n      \"type\": \"Fan\" | \"AC\" | \"TV\" | \"Lights\" | \"Appliances\",\n"
             "      \"energy_efficiency_estimate\": \"High\" | \"Medium\" | \"Low\",\n"
-            "      \"detected_issues\": [\"string\"],\n"
-            "      \"eco_alternative\": \"string\",\n"
-            "      \"energy_waste_kwh\": float,\n"
-            "      \"carbon_impact_kg\": float,\n"
-            "      \"yearly_cost_usd\": float\n"
-            "    }\n"
-            "  ],\n"
-            "  \"total_energy_waste_kwh\": float,\n"
-            "  \"total_carbon_impact_kg\": float,\n"
-            "  \"total_yearly_cost_usd\": float,\n"
-            "  \"overall_room_eco_score\": integer (0 to 100),\n"
-            "  \"recommendations\": [\"string\"]\n"
-            "}\n"
+            "      \"detected_issues\": [\"string\"],\n      \"eco_alternative\": \"string\",\n"
+            "      \"energy_waste_kwh\": float,\n      \"carbon_impact_kg\": float,\n      \"yearly_cost_usd\": float\n"
+            "    }\n  ],\n  \"total_energy_waste_kwh\": float,\n  \"total_carbon_impact_kg\": float,\n"
+            "  \"total_yearly_cost_usd\": float,\n  \"overall_room_eco_score\": integer (0 to 100),\n"
+            "  \"recommendations\": [\"string\"]\n}\n"
             "Calculate realistic estimates for energy waste, carbon impact (0.385 kg CO2 per kWh), "
-            "and yearly cost ($0.15 per kWh) based on standard appliance consumption profiles. "
-            "Provide ONLY the JSON output."
+            "and yearly cost ($0.15 per kWh). Provide ONLY the JSON output."
         )
 
         raw_response = await self.gemini.analyze_multimodal(
-            image_bytes=file_bytes,
-            mime_type=content_type,
-            prompt=prompt
+            image_bytes=file_bytes, mime_type=content_type, prompt=prompt
         )
         parsed = self._extract_json(raw_response)
+        
+        self._hydrate_appliance_type_and_metrics(parsed)
+        self._calculate_appliance_totals(parsed, room_type)
+        return parsed
 
-        # Apply standard defaults
+    def _hydrate_appliance_type_and_metrics(self, parsed: dict) -> None:
+        """Helper to fill in appliance categorization, energy waste, and carbon impact values."""
         if "detected_appliances" not in parsed:
             parsed["detected_appliances"] = []
         
-        # Hydrate appliance types/scores if missing
         for app in parsed["detected_appliances"]:
             if "type" not in app:
                 name_lower = app.get("name", "").lower()
@@ -117,7 +96,8 @@ class VisionAnalysisService:
             if "yearly_cost_usd" not in app:
                 app["yearly_cost_usd"] = round(app["energy_waste_kwh"] * 0.15, 2)
 
-        # Calculate totals if LLM didn't provide them
+    def _calculate_appliance_totals(self, parsed: dict, room_type: str) -> None:
+        """Helper to calculate summary metrics across all identified appliances."""
         if "total_energy_waste_kwh" not in parsed:
             parsed["total_energy_waste_kwh"] = round(sum(app.get("energy_waste_kwh", 0.0) for app in parsed["detected_appliances"]), 2)
         if "total_carbon_impact_kg" not in parsed:
@@ -130,5 +110,3 @@ class VisionAnalysisService:
         if "recommendations" not in parsed:
             parsed["recommendations"] = ["Ensure appliances are unplugged when not in use."]
         parsed["room_type"] = parsed.get("room_type", room_type)
-        
-        return parsed
