@@ -171,4 +171,3 @@ python -m unittest discover -s tests -p "test_*.py"
 ### Backend (Render)
 - The backend runs on a **Render Web Service**.
 - In the Render dashboard, define the environment variables (`MONGODB_URI`, `GEMINI_API_KEY`, `JWT_SECRET`, etc.) inside the service's Environment settings.
-- Ensure that the origin `https://carbon-footprint-dun.vercel.app` is listed in `backend/main.py` CORS middleware (pushed in `d3a66f4`).
