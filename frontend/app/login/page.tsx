@@ -46,7 +46,22 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.detail || "Authentication request failed.");
+        let errorString = "Authentication request failed.";
+        if (data && data.detail) {
+          if (typeof data.detail === "string") {
+            errorString = data.detail;
+          } else if (Array.isArray(data.detail)) {
+            errorString = data.detail
+              .map((err: any) => {
+                const field = err.loc ? err.loc[err.loc.length - 1] : "";
+                return field ? `${field}: ${err.msg}` : err.msg;
+              })
+              .join(", ");
+          } else if (typeof data.detail === "object") {
+            errorString = JSON.stringify(data.detail);
+          }
+        }
+        throw new Error(errorString);
       }
 
       // Store tokens and metadata
